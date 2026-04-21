@@ -269,7 +269,7 @@ export default function SplitDispenseMiniApp() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [labelWidthMm, setLabelWidthMm] = useState("90");
   const [labelHeightMm, setLabelHeightMm] = useState("50");
-  const [labelPaddingMm, setLabelPaddingMm] = useState("4");
+  const [labelPaddingMm, setLabelPaddingMm] = useState("0");
   const [labelCopies, setLabelCopies] = useState("1");
   const [labelMode, setLabelMode] = useState<"text" | "image">("text");
   const [takeImageSelection, setTakeImageSelection] = useState("");
@@ -920,7 +920,7 @@ export default function SplitDispenseMiniApp() {
                   </div>
                   <div>
                     <Label>내부 여백(mm)</Label>
-                    <Input value={labelPaddingMm} onChange={(e) => setLabelPaddingMm(e.target.value)} placeholder="4" />
+                    <Input value={labelPaddingMm} onChange={(e) => setLabelPaddingMm(e.target.value)} placeholder="0" />
                   </div>
                   <div>
                     <Label>{labelMode === "image" ? "세트 반복 수량" : "출력 수량"}</Label>
