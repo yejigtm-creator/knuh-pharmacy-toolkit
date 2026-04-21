@@ -82,7 +82,7 @@ const LABEL_IMAGE_PRESETS: LabelImagePreset[] = [
   { key: "pictogram-stuffy-nose", category: "pictogram", label: "코막힘약", src: "/labels/코막힘약.png" },
   { key: "pictogram-inhaler", category: "pictogram", label: "흡입하는 약 (먹지 마세요)", src: "/labels/흡입약.png" },
   { key: "prep-augmentin-duo", category: "prep", label: "오구멘틴듀오 조제방법", src: "/labels/오구멘틴듀오 조제.png" },
-  { key: "prep-amocraneo", category: "prep", label: "아모크라네오 조제방법", src: "/labels/아모크라네오 조제(1).png" },
+  { key: "prep-amocraneo", category: "prep", label: "아모크라네오 조제방법", src: "/labels/아모크라네오 조제.png" },
 ];
 
 const toNum = (value: string): number => {
