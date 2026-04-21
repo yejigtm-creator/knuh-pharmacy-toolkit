@@ -57,7 +57,7 @@ const SORTED_SYRUP_DRUGS = [...SYRUP_DRUGS].sort((a, b) => a.name.localeCompare(
 
 const LABEL_IMAGE_PRESETS: LabelImagePreset[] = [
   { key: "fever-6hr", category: "take", label: "38도이상 열날 때 6시간 간격으로 복용", src: "/labels/발열 시 복용(6hr).png" },
-  { key: "sleep", category: "take", label: "수면장애 시 복용하세요", src: "/labels/수변장애 시 복용.png" },
+  { key: "sleep", category: "take", label: "수면장애 시 복용하세요", src: "/labels/수면장애 시 복용.png" },
   { key: "nausea", category: "take", label: "속이 울렁거릴 때 복용하세요", src: "/labels/속 울렁거릴 시 복용.png" },
   { key: "chest-pain", category: "take", label: "가슴 통증 시 혀밑에 1알 넣으세요", src: "/labels/가슴통증 시 복용.png" },
   { key: "hives", category: "take", label: "두드러기 발생 시 복용하세요", src: "/labels/두드러기 시 복용.png" },
