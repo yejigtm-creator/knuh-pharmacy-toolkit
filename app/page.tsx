@@ -40,6 +40,7 @@ type LabelImagePreset = {
 };
 
 const LABEL_STORAGE_KEY = "yj-pharmacy-labels-v1";
+const IMAGE_ASSET_VERSION = "20260421-1";
 
 const SYRUP_DRUGS: SyrupDrug[] = [
   { name: "오구멘틴 듀오시럽", gramsPerMl: 0.11 },
@@ -84,6 +85,8 @@ const LABEL_IMAGE_PRESETS: LabelImagePreset[] = [
   { key: "prep-augmentin-duo", category: "prep", label: "오구멘틴듀오 조제방법", src: "/labels/오구멘틴듀오 조제.png" },
   { key: "prep-amocraneo", category: "prep", label: "아모크라네오 조제방법", src: "/labels/아모크라네오 조제.png" },
 ];
+
+const versionedSrc = (src: string): string => encodeURI(`${src}?v=${IMAGE_ASSET_VERSION}`);
 
 const toNum = (value: string): number => {
   const parsed = Number(value);
@@ -448,7 +451,7 @@ export default function SplitDispenseMiniApp() {
       labelMode === "image"
         ? selectedLabelImages
             .map((src) =>
-              Array.from({ length: printConfig.copies }, () => `<div class=\"label-image-wrap\"><img src="${encodeURI(src)}" alt=\"label\" /></div>`).join("")
+              Array.from({ length: printConfig.copies }, () => `<div class=\"label-image-wrap\"><img src="${versionedSrc(src)}" alt=\"label\" /></div>`).join("")
             )
             .join("")
         : Array.from({ length: printConfig.copies }, () => `<div class=\"label-sheet\">${printableHtml}</div>`).join("");
@@ -790,7 +793,7 @@ export default function SplitDispenseMiniApp() {
                           <div className="grid gap-3 md:grid-cols-2">
                             {selectedLabelImages.map((src, index) => (
                               <div key={`${src}-${index}`} className="rounded-xl border border-[#e5dccf] bg-white p-3">
-                                <img src={encodeURI(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto max-h-[180px] w-full object-contain" />
+                                <img src={versionedSrc(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto max-h-[180px] w-full object-contain" />
                                 <div className="mt-2 flex items-center justify-between gap-2 text-sm text-[#6e665b]">
                                   <span>{index + 1}번 라벨</span>
                                   <div className="flex items-center gap-2">
@@ -1012,7 +1015,7 @@ export default function SplitDispenseMiniApp() {
                             className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm"
                             style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm` }}
                           >
-                            <img src={encodeURI(src)} alt={`출력용 라벨 ${index + 1}`} className="h-full w-full object-contain" />
+                            <img src={versionedSrc(src)} alt={`출력용 라벨 ${index + 1}`} className="h-full w-full object-contain" />
                           </div>
                         ))
                       ) : (
@@ -1046,7 +1049,7 @@ export default function SplitDispenseMiniApp() {
                   <div className="grid gap-4 md:grid-cols-2">
                     {selectedLabelImages.map((src, index) => (
                       <div key={`${src}-modal-${index}`} className="overflow-hidden rounded-[18px] border border-slate-300 bg-white">
-                        <img src={encodeURI(src)} alt="preview" className="h-full w-full object-contain" />
+                        <img src={versionedSrc(src)} alt="preview" className="h-full w-full object-contain" />
                       </div>
                     ))}
                   </div>
