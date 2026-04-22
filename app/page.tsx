@@ -290,6 +290,11 @@ export default function SplitDispenseMiniApp() {
 
   const result = useMemo(() => calculateResult(s, d, p), [s, d, p]);
   const recs = useMemo(() => buildRecommendations(s, d), [s, d]);
+  useEffect(() => {
+  if (recs.length > 0) {
+    setPacks(String(recs[0].packs));
+  }
+}, [recs]);
 
   const syrupResult = useMemo(() => {
     const ml = toNum(syrupMl);
@@ -614,9 +619,14 @@ export default function SplitDispenseMiniApp() {
               <CardContent className="space-y-3 p-6">
                 <div className="font-semibold text-[#3e372f]">추천 포 수</div>
                 {recs.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {recs.map((r, i) => (
-                      <PebbleButton key={r.packs} onClick={() => setPacks(String(r.packs))} variant={i === 0 ? "sage" : "light"}>
+                      <PebbleButton
+  key={r.packs}
+  className={`w-full ${i === 0 ? "text-lg py-4 scale-[1.03]" : ""}`}
+  onClick={() => setPacks(String(r.packs))}
+  variant={i === 0 ? "sage" : "light"}
+>
                         {r.packs}포 ({r.tabs}T)
                       </PebbleButton>
                     ))}
