@@ -12,6 +12,7 @@ type Recommendation = {
   packs: number;
   tabs: number;
   score: number;
+  precisionLabel: string;
 };
 
 type CalcResult = {
@@ -129,7 +130,19 @@ const buildRecommendations = (strength: number, dose: number): Recommendation[] 
   const list: Recommendation[] = [];
   for (let i = 1; i <= 30; i += 1) {
     const totalTabs = (dose * i) / strength;
-    list.push({ packs: i, tabs: round(totalTabs), score: getFractionScore(totalTabs) });
+    const score = getFractionScore(totalTabs);
+    let precisionLabel = "0.25T 근접";
+    if (score === 0) {
+      precisionLabel = Number.isInteger(totalTabs)
+        ? "정확히 정수"
+        : Number.isInteger(totalTabs * 2)
+          ? "정확히 0.5T"
+          : "정확히 0.25T";
+    } else if (Math.abs(totalTabs * 2 - Math.round(totalTabs * 2)) < 1e-9) {
+      precisionLabel = "0.5T 근접";
+    }
+
+    list.push({ packs: i, tabs: round(totalTabs), score, precisionLabel });
   }
 
   return list.sort((a, b) => a.score - b.score || a.packs - b.packs).slice(0, 4);
@@ -207,10 +220,12 @@ function PebbleButton({
   children,
   onClick,
   variant = "light",
+  className = "",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: "light" | "sage";
+  className?: string;
 }) {
   return (
     <button
@@ -222,6 +237,7 @@ function PebbleButton({
         variant === "sage"
           ? "bg-[#7A816C] text-white shadow-[0_14px_24px_rgba(116,106,88,0.22),0_3px_4px_rgba(255,255,255,0.28)_inset,0_-10px_16px_rgba(122,129,108,0.22)_inset]"
           : "bg-[#f7f2ec] text-[#6b6156] shadow-[0_12px_20px_rgba(116,106,88,0.15),0_2px_3px_rgba(255,255,255,0.85)_inset,0_-8px_14px_rgba(221,212,201,0.42)_inset]",
+        className,
       ].join(" ")}
     >
       {children}
@@ -622,12 +638,18 @@ export default function SplitDispenseMiniApp() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {recs.map((r, i) => (
                       <PebbleButton
-  key={r.packs}
-  className={`w-full ${i === 0 ? "text-lg py-4 scale-[1.03]" : ""}`}
-  onClick={() => setPacks(String(r.packs))}
-  variant={i === 0 ? "sage" : "light"}
->
-                        {r.packs}포 ({r.tabs}T)
+                        key={r.packs}
+                        className={`w-full ${i === 0 ? "text-lg py-4 scale-[1.03]" : ""}`}
+                        onClick={() => setPacks(String(r.packs))}
+                        variant={i === 0 ? "sage" : "light"}
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          {i === 0 && <span>⭐</span>}
+                          <span>{r.packs}포 ({r.tabs}T)</span>
+                        </div>
+                        <div className={`mt-1 text-xs ${i === 0 ? "text-white/85" : "text-[#8a8175]"}`}>
+                          {r.precisionLabel}
+                        </div>
                       </PebbleButton>
                     ))}
                   </div>
