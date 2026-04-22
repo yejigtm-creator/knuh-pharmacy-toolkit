@@ -57,6 +57,18 @@ const SYRUP_DRUGS: SyrupDrug[] = [
 
 const SORTED_SYRUP_DRUGS = [...SYRUP_DRUGS].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 
+const SYRUP_INFO: Record<string, { storage: string; duration: string }> = {
+  "듀리세프 건조시럽": { storage: "냉장", duration: "14일" },
+  "디푸루칸 건조시럽": { storage: "실온", duration: "14일" },
+  "바난 건조시럽": { storage: "냉장", duration: "14일" },
+  "아모크라 네오시럽": { storage: "냉장", duration: "7일" },
+  "아지탑스 건조시럽": { storage: "실온", duration: "5일" },
+  "오구멘틴 듀오시럽": { storage: "냉장", duration: "7일" },
+  "클래리 건조시럽": { storage: "실온", duration: "14일" },
+  "파목신 건조시럽": { storage: "냉장", duration: "14일" },
+  "포리부틴 건조시럽": { storage: "실온", duration: "15일" },
+};
+
 const LABEL_IMAGE_PRESETS: LabelImagePreset[] = [
   { key: "fever-6hr", category: "take", label: "38도이상 열날 때 6시간 간격으로 복용", src: "/labels/발열 시 복용(6hr).png" },
   { key: "sleep", category: "take", label: "수면장애 시 복용하세요", src: "/labels/수면장애 시 복용.png" },
@@ -685,6 +697,11 @@ export default function SplitDispenseMiniApp() {
                     <Input value={syrupMl} onChange={(e) => setSyrupMl(e.target.value)} placeholder="mL" />
                   </div>
                 </div>
+                {SYRUP_INFO[selectedSyrup] && (
+                  <div className="rounded-xl bg-[#e9f0e6] p-3 text-sm text-[#4b5a3f]">
+                    조제 후 {SYRUP_INFO[selectedSyrup].storage} 보관 / 유효기간 {SYRUP_INFO[selectedSyrup].duration}
+                  </div>
+                )}
                 <div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">
                   계산식: 약품별 g/mL × 제조할 mL = 필요한 분말량(g)
                 </div>
