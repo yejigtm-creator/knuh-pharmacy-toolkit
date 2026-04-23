@@ -7,12 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 type TabKey = "split" | "syrup" | "label";
+type SplitMode = "mg" | "t";
 
 type Recommendation = {
   packs: number;
   tabs: number;
   score: number;
+  accuracy: number;
   precisionLabel: string;
+  reason: string;
+  kind?: "practical" | "accuracy";
 };
 
 type CalcResult = {
@@ -41,7 +45,7 @@ type LabelImagePreset = {
 };
 
 const LABEL_STORAGE_KEY = "yj-pharmacy-labels-v1";
-const IMAGE_ASSET_VERSION = "20260421-1";
+const IMAGE_ASSET_VERSION = "20260421-2";
 
 const SYRUP_DRUGS: SyrupDrug[] = [
   { name: "오구멘틴 듀오시럽", gramsPerMl: 0.11 },
@@ -70,6 +74,8 @@ const SYRUP_INFO: Record<string, { storage: string; duration: string }> = {
 };
 
 const LABEL_IMAGE_PRESETS: LabelImagePreset[] = [
+  { key: "prep-ventolin-neb", category: "prep", label: "벤토린 흡입액 조제방법", src: "/labels/벤토린흡입액_조제.png" },
+  { key: "pictogram-fever-detail", category: "pictogram", label: "해열제 안내", src: "/labels/해열제_상세.png" },
   { key: "fever-6hr", category: "take", label: "38도이상 열날 때 6시간 간격으로 복용", src: "/labels/발열 시 복용(6hr).png" },
   { key: "sleep", category: "take", label: "수면장애 시 복용하세요", src: "/labels/수면장애 시 복용.png" },
   { key: "nausea", category: "take", label: "속이 울렁거릴 때 복용하세요", src: "/labels/속 울렁거릴 시 복용.png" },
@@ -117,9 +123,62 @@ const clampPositive = (value: string, fallback: number): number => {
 };
 
 const getFractionScore = (tabs: number): number => {
-  const fraction = tabs - Math.floor(tabs);
-  const candidates = [0, 0.25, 0.5, 0.75];
-  return Math.min(...candidates.map((c) => Math.abs(fraction - c)));
+  const fraction = ((tabs % 1) + 1) % 1;
+  const quarterTargets = [0, 0.25, 0.5, 0.75];
+
+  return Math.min(
+    ...quarterTargets.map((target) => {
+      const diff = Math.abs(fraction - target);
+      return Math.min(diff, 1 - diff);
+    })
+  );
+};
+
+const getPrecisionLabel = (totalTabs: number, score: number): string => {
+  const fraction = ((totalTabs % 1) + 1) % 1;
+  const integerDistance = Math.min(Math.abs(fraction - 0), Math.abs(1 - fraction));
+
+  if (score === 0) {
+    return integerDistance < 1e-9
+      ? "정확히 정수"
+      : Number.isInteger(totalTabs * 2)
+        ? "정확히 0.5T"
+        : "정확히 0.25T";
+  }
+
+  if (integerDistance <= 0.02) return "정수 근접";
+  if (Math.min(Math.abs(fraction - 0.5), 1 - Math.abs(fraction - 0.5)) <= 0.02) return "0.5T 근접";
+  return "0.25T 근접";
+};
+
+const getPracticalPenalty = (packs: number, totalTabs: number): number => {
+  let packPenalty = 0;
+  if (packs <= 4) packPenalty = 0;
+  else if (packs <= 8) packPenalty = 5;
+  else if (packs <= 12) packPenalty = 15;
+  else packPenalty = 40;
+
+  let totalTabsPenalty = 0;
+  if (totalTabs <= 2) totalTabsPenalty = 0;
+  else if (totalTabs <= 4) totalTabsPenalty = 5;
+  else totalTabsPenalty = 15;
+
+  return packPenalty + totalTabsPenalty;
+};
+
+const buildRecommendationReason = ({
+  precisionLabel,
+  packs,
+  kind,
+}: {
+  precisionLabel: string;
+  packs: number;
+  kind?: "practical" | "accuracy";
+}): string => {
+  if (kind === "accuracy") return "오차 최소값 기준";
+  if (packs <= 4) return `${precisionLabel} + 포수 적음`;
+  if (packs <= 8) return `${precisionLabel} + 실무 적정 포수`;
+  return `${precisionLabel} + 참고용 후보`;
 };
 
 const calculateResult = (strength: number, dose: number, packs: number): CalcResult | null => {
@@ -136,28 +195,99 @@ const calculateResult = (strength: number, dose: number, packs: number): CalcRes
   };
 };
 
-const buildRecommendations = (strength: number, dose: number): Recommendation[] => {
+const calculateTModeResult = (doseT: number, packs: number, strengthMg: number): CalcResult | null => {
+  if (doseT <= 0 || packs <= 0) return null;
+
+  return {
+    totalTabs: round(doseT * packs),
+    perPack: round(strengthMg > 0 ? doseT * strengthMg : 0),
+    ratio: round(doseT),
+  };
+};
+
+const buildMgRecommendations = (strength: number, dose: number): Recommendation[] => {
   if (strength <= 0 || dose <= 0) return [];
 
   const list: Recommendation[] = [];
   for (let i = 1; i <= 30; i += 1) {
     const totalTabs = (dose * i) / strength;
-    const score = getFractionScore(totalTabs);
-    let precisionLabel = "0.25T 근접";
-    if (score === 0) {
-      precisionLabel = Number.isInteger(totalTabs)
-        ? "정확히 정수"
-        : Number.isInteger(totalTabs * 2)
-          ? "정확히 0.5T"
-          : "정확히 0.25T";
-    } else if (Math.abs(totalTabs * 2 - Math.round(totalTabs * 2)) < 1e-9) {
-      precisionLabel = "0.5T 근접";
-    }
-
-    list.push({ packs: i, tabs: round(totalTabs), score, precisionLabel });
+    const accuracy = getFractionScore(totalTabs);
+    const precisionLabel = getPrecisionLabel(totalTabs, accuracy);
+    list.push({
+      packs: i,
+      tabs: round(totalTabs),
+      score: accuracy,
+      accuracy,
+      precisionLabel,
+      reason: buildRecommendationReason({ precisionLabel, packs: i, kind: "practical" }),
+      kind: "practical",
+    });
   }
 
-  return list.sort((a, b) => a.score - b.score || a.packs - b.packs).slice(0, 4);
+  return list.sort((a, b) => a.accuracy - b.accuracy || a.packs - b.packs).slice(0, 4);
+};
+
+const buildTRecommendations = (doseT: number, practicalPackLimit: number): Recommendation[] => {
+  if (doseT <= 0) return [];
+
+  const candidates: Recommendation[] = [];
+  for (let i = 1; i <= 30; i += 1) {
+    const totalTabs = doseT * i;
+    const accuracy = getFractionScore(totalTabs);
+    const score = accuracy * 100 + getPracticalPenalty(i, totalTabs);
+    const precisionLabel = getPrecisionLabel(totalTabs, accuracy);
+    candidates.push({
+      packs: i,
+      tabs: round(totalTabs),
+      score,
+      accuracy,
+      precisionLabel,
+      reason: buildRecommendationReason({ precisionLabel, packs: i, kind: "practical" }),
+      kind: "practical",
+    });
+  }
+
+  const within15 = candidates.filter((item) => item.packs <= practicalPackLimit);
+  const exactWithin15 = within15
+    .filter((item) => item.accuracy === 0)
+    .sort((a, b) => a.packs - b.packs || a.tabs - b.tabs);
+
+  const nearWithin15 = within15
+    .filter((item) => item.accuracy > 0 && item.accuracy <= 0.02)
+    .sort((a, b) => {
+      // 실무 우선: 포수 적은 것 먼저, 그 다음 정확도
+      return a.packs - b.packs || a.accuracy - b.accuracy || a.tabs - b.tabs;
+    });
+
+  const practicalRest = [...candidates].sort((a, b) => {
+    const accuracyGap = Math.abs(a.accuracy - b.accuracy);
+    if (a.packs <= practicalPackLimit && b.packs <= practicalPackLimit && accuracyGap >= 0.015) {
+      return a.accuracy - b.accuracy || a.packs - b.packs;
+    }
+    return a.score - b.score || a.accuracy - b.accuracy || a.packs - b.packs;
+  });
+
+  const practicalTop3: Recommendation[] = [];
+  const seen = new Set<string>();
+  const addUnique = (item: Recommendation) => {
+    const key = `${item.packs}-${item.tabs}`;
+    if (!seen.has(key) && practicalTop3.length < 3) {
+      seen.add(key);
+      practicalTop3.push(item);
+    }
+  };
+
+  exactWithin15.forEach(addUnique);
+  nearWithin15.forEach(addUnique);
+  practicalRest.forEach(addUnique);
+
+  const accuracyBest = [...candidates].sort((a, b) => a.accuracy - b.accuracy || a.packs - b.packs)[0];
+  const duplicated = practicalTop3.some((item) => item.packs === accuracyBest.packs && item.tabs === accuracyBest.tabs);
+  if (!duplicated) {
+    practicalTop3.push({ ...accuracyBest, kind: "accuracy", precisionLabel: "정확도 우선", reason: buildRecommendationReason({ precisionLabel: "정확도 우선", packs: accuracyBest.packs, kind: "accuracy" }) });
+  }
+
+  return practicalTop3;
 };
 
 const loadSavedLabels = (): SavedLabel[] => {
@@ -187,7 +317,7 @@ const runSelfTests = (): void => {
   console.assert(case2?.totalTabs === 0.5, "Expected totalTabs to be 0.5");
   console.assert(case2?.perPack === 25, "Expected perPack to be 25");
 
-  const recs = buildRecommendations(100, 25);
+  const recs = buildMgRecommendations(100, 25);
   console.assert(recs.length === 4, "Expected 4 recommendations");
   console.assert(recs[0].packs === 1, "Expected first recommendation to be 1 pack");
 
@@ -305,24 +435,39 @@ export default function SplitDispenseMiniApp() {
   const [pictogramImageSelection, setPictogramImageSelection] = useState("");
   const [prepImageSelection, setPrepImageSelection] = useState("");
   const [selectedLabelImages, setSelectedLabelImages] = useState<string[]>([]);
+  const [favoriteImages, setFavoriteImages] = useState<string[]>([]);
   const labelTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const symbolButtons = ["☆", "★", "○", "●", "→"];
 
   useEffect(() => {
     setSavedLabels(loadSavedLabels());
+    if (typeof window !== "undefined") {
+      const fav = localStorage.getItem("yj-label-favorites");
+      if (fav) setFavoriteImages(JSON.parse(fav));
+    }
   }, []);
 
   const s = toNum(strength);
   const d = toNum(dose);
   const p = toNum(packs);
+  const [splitMode, setSplitMode] = useState<SplitMode>("mg");
+  const [practicalPackLimit, setPracticalPackLimit] = useState("15");
 
-  const result = useMemo(() => calculateResult(s, d, p), [s, d, p]);
-  const recs = useMemo(() => buildRecommendations(s, d), [s, d]);
+  const result = useMemo(
+    () => (splitMode === "mg" ? calculateResult(s, d, p) : calculateTModeResult(d, p, s)),
+    [splitMode, s, d, p]
+  );
+
+  const recs = useMemo(
+    () => (splitMode === "mg" ? buildMgRecommendations(s, d) : buildTRecommendations(d, practicalPackLimit === "none" ? 30 : clampPositive(practicalPackLimit, 15))),
+    [splitMode, s, d, practicalPackLimit]
+  );
+
   useEffect(() => {
-  if (recs.length > 0) {
-    setPacks(String(recs[0].packs));
-  }
-}, [recs]);
+    if (recs.length > 0) {
+      setPacks(String(recs[0].packs));
+    }
+  }, [recs]);
 
   const syrupResult = useMemo(() => {
     const ml = toNum(syrupMl);
@@ -351,10 +496,10 @@ export default function SplitDispenseMiniApp() {
 
   const imagePresetsByCategory = useMemo(
     () => ({
-      take: LABEL_IMAGE_PRESETS.filter((item) => item.category === "take"),
-      stop: LABEL_IMAGE_PRESETS.filter((item) => item.category === "stop"),
-      pictogram: LABEL_IMAGE_PRESETS.filter((item) => item.category === "pictogram"),
-      prep: LABEL_IMAGE_PRESETS.filter((item) => item.category === "prep"),
+      take: LABEL_IMAGE_PRESETS.filter((item) => item.category === "take").sort((a,b)=>a.label.localeCompare(b.label,"ko")),
+      stop: LABEL_IMAGE_PRESETS.filter((item) => item.category === "stop").sort((a,b)=>a.label.localeCompare(b.label,"ko")),
+      pictogram: LABEL_IMAGE_PRESETS.filter((item) => item.category === "pictogram").sort((a,b)=>a.label.localeCompare(b.label,"ko")),
+      prep: LABEL_IMAGE_PRESETS.filter((item) => item.category === "prep").sort((a,b)=>a.label.localeCompare(b.label,"ko")),
     }),
     []
   );
@@ -382,6 +527,17 @@ export default function SplitDispenseMiniApp() {
     const next = savedLabels.filter((item) => item.id !== id);
     setSavedLabels(next);
     saveSavedLabels(next);
+  };
+
+  const toggleFavorite = (src: string) => {
+    setFavoriteImages((prev) => {
+      const exists = prev.includes(src);
+      const next = exists ? prev.filter((i) => i !== src) : [src, ...prev];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("yj-label-favorites", JSON.stringify(next));
+      }
+      return next;
+    });
   };
 
   const addImageLabel = (src: string) => {
@@ -541,6 +697,8 @@ export default function SplitDispenseMiniApp() {
               width: 100%;
               height: 100%;
               object-fit: contain;
+              image-rendering: -webkit-optimize-contrast;
+              image-rendering: crisp-edges;
             }
             .label-sheet:last-child, .label-image-wrap:last-child {
               page-break-after: auto;
@@ -606,23 +764,56 @@ export default function SplitDispenseMiniApp() {
 
         {tab === "split" && (
           <div className="space-y-6">
-            <SectionCard title="분할조제 계산" description="예: 75mg 정 → 22mg 처방 시 몇 정을 몇 포로 나눌지 계산">
+            <SectionCard title="분할조제 계산" description="mg 또는 T 단위 처방 기준으로 몇 정을 몇 포로 나눌지 계산">
               <div className="space-y-5">
+                <div className="flex flex-wrap gap-3">
+                  <PebbleButton onClick={() => setSplitMode("mg")} variant={splitMode === "mg" ? "sage" : "light"}>mg 기준</PebbleButton>
+                  <PebbleButton onClick={() => setSplitMode("t")} variant={splitMode === "t" ? "sage" : "light"}>T 기준</PebbleButton>
+                </div>
                 <div className="grid gap-4 md:grid-cols-4">
+                  {splitMode === "mg" && (
+                    <div>
+                      <Label>약 1정 함량</Label>
+                      <Input value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="mg/tab" />
+                    </div>
+                  )}
+
                   <div>
-                    <Label>약 1정 함량</Label>
-                    <Input value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="mg/tab" />
-                  </div>
-                  <div>
-                    <Label>처방 1회 용량</Label>
-                    <Input value={dose} onChange={(e) => setDose(e.target.value)} placeholder="mg" />
+                    <Label>{splitMode === "mg" ? "처방 1회 용량" : "처방 1회 용량(T)"}</Label>
+                    <Input value={dose} onChange={(e) => setDose(e.target.value)} placeholder={splitMode === "mg" ? "mg" : "T"} />
                   </div>
                   <div>
                     <Label>나눌 포 수</Label>
                     <Input value={packs} onChange={(e) => setPacks(e.target.value)} placeholder="포" />
                   </div>
                 </div>
-                <div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">계산식: (처방용량 × 포수) ÷ 1정 함량</div>
+                <div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">
+                  {splitMode === "mg" ? "계산식: (처방용량 × 포수) ÷ 1정 함량" : "계산식: 처방 T × 포수 = 필요한 총 정수"}
+                </div>
+                {splitMode === "t" && (
+                  <div className="space-y-3">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div>
+                        <Label>실무추천 포수 제한</Label>
+                        <select
+                          value={practicalPackLimit}
+                          onChange={(e) => setPracticalPackLimit(e.target.value)}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="10">10포 이하</option>
+                          <option value="12">12포 이하</option>
+                          <option value="15">15포 이하</option>
+                          <option value="none">제한 없음</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-[#e9f0e6] p-3 text-sm text-[#4b5a3f]">
+                      T 기준 추천은 1~3순위는 실무추천, 마지막 항목은 정확도 우선값으로 표시됩니다.
+                      <span className="ml-1">현재 실무추천 포수 제한은 {practicalPackLimit === "none" ? "없음" : `${practicalPackLimit}포 이하`}입니다.</span>
+                      {s > 0 && d > 0 && <span className="ml-1">현재 입력값은 1포당 약 {round(d * s)} mg 기준입니다.</span>}
+                    </div>
+                  </div>
+                )}
               </div>
             </SectionCard>
 
@@ -632,10 +823,12 @@ export default function SplitDispenseMiniApp() {
                   <div className="text-sm text-[#6e665b]">필요한 총 정수</div>
                   <div className="text-2xl font-bold text-[#3f372f]">{result ? `${result.totalTabs} T` : "-"}</div>
                 </div>
-                <div>
-                  <div className="text-sm text-[#6e665b]">1포당 실제 함량</div>
-                  <div className="text-xl text-[#3f372f]">{result ? `${result.perPack} mg` : "-"}</div>
-                </div>
+                {splitMode === "mg" && (
+                  <div>
+                    <div className="text-sm text-[#6e665b]">1포당 실제 함량</div>
+                    <div className="text-xl text-[#3f372f]">{result ? `${result.perPack} mg` : "-"}</div>
+                  </div>
+                )}
                 <div>
                   <div className="text-sm text-[#6e665b]">정수 비율</div>
                   <div className="text-xl text-[#3f372f]">{result ? `${result.ratio} T` : "-"}</div>
@@ -660,7 +853,10 @@ export default function SplitDispenseMiniApp() {
                           <span>{r.packs}포 ({r.tabs}T)</span>
                         </div>
                         <div className={`mt-1 text-xs ${i === 0 ? "text-white/85" : "text-[#8a8175]"}`}>
-                          {r.precisionLabel}
+                          {r.precisionLabel}{r.kind === "accuracy" && <span className="ml-1">(정확도 우선)</span>}
+                        </div>
+                        <div className={`mt-1 text-[11px] ${i === 0 ? "text-white/75" : "text-[#9a9083]"}`}>
+                          {r.reason}
                         </div>
                       </PebbleButton>
                     ))}
@@ -697,11 +893,21 @@ export default function SplitDispenseMiniApp() {
                     <Input value={syrupMl} onChange={(e) => setSyrupMl(e.target.value)} placeholder="mL" />
                   </div>
                 </div>
-                {SYRUP_INFO[selectedSyrup] && (
-                  <div className="rounded-xl bg-[#e9f0e6] p-3 text-sm text-[#4b5a3f]">
-                    조제 후 {SYRUP_INFO[selectedSyrup].storage} 보관 / 유효기간 {SYRUP_INFO[selectedSyrup].duration}
-                  </div>
-                )}
+                {SYRUP_INFO[selectedSyrup] && (() => {
+                  const info = SYRUP_INFO[selectedSyrup];
+                  const isCold = info.storage === "냉장";
+                  return (
+                    <div
+                      className={`rounded-xl p-4 text-base font-semibold ${
+                        isCold
+                          ? "bg-[#e3ebe6] text-[#4b5a3f]"
+                          : "bg-[#efe3e6] text-[#6a4b4f]"
+                      }`}
+                    >
+                      {isCold ? "❄️ " : "🏠 "}조제 후 {info.storage} 보관 / 유효기간 {info.duration}
+                    </div>
+                  );
+                })()}
                 <div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">
                   계산식: 약품별 g/mL × 제조할 mL = 필요한 분말량(g)
                 </div>
@@ -744,6 +950,30 @@ export default function SplitDispenseMiniApp() {
                   <div className="space-y-4">
                     <div>
                       <div className="mb-2 text-sm font-semibold text-[#6e665b]">이미지 라벨 선택</div>
+                      {favoriteImages.length > 0 && (
+                        <div className="mb-4 rounded-2xl border border-[#e5dccf] bg-white p-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <div className="text-sm font-semibold text-[#6e665b]">즐겨찾기</div>
+                            <div className="text-xs text-[#8a8175]">★ 버튼으로 추가/해제</div>
+                          </div>
+                          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                            {favoriteImages
+                              .map((src) => LABEL_IMAGE_PRESETS.find((item) => item.src === src))
+                              .filter((item): item is LabelImagePreset => Boolean(item))
+                              .map((item) => (
+                                <button
+                                  key={`favorite-${item.key}`}
+                                  type="button"
+                                  onClick={() => addImageLabel(item.src)}
+                                  className="flex items-center justify-between rounded-xl border border-[#e5dccf] bg-[#f8f4ed] px-3 py-2 text-left text-sm text-[#5f574d] hover:bg-[#f1eadf]"
+                                >
+                                  <span className="truncate pr-2">{item.label}</span>
+                                  <span className="text-[#b08b2e]">★</span>
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="grid gap-4 grid-cols-4">
                         <div>
                           <Label>복용 이미지</Label>
@@ -786,7 +1016,7 @@ export default function SplitDispenseMiniApp() {
                         </div>
 
                         <div>
-                          <Label>픽토그램</Label>
+                          <Label>약종류</Label>
                           <select
                             value={pictogramImageSelection}
                             onChange={(e) => {
@@ -796,7 +1026,7 @@ export default function SplitDispenseMiniApp() {
                             }}
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                           >
-                            <option value="">픽토그램 선택</option>
+                            <option value="">약종류 선택</option>
                             {imagePresetsByCategory.pictogram.map((item) => (
                               <option key={item.key} value={item.src}>
                                 {item.label}
@@ -826,6 +1056,9 @@ export default function SplitDispenseMiniApp() {
                         </div>
                       </div>
                       <div className="mt-2 text-xs text-[#8a8175]">이미지를 선택하면 목록에 추가되고, 선택한 순서대로 출력됩니다.</div>
+                      <div className="mt-3 rounded-xl bg-[#ede6da] p-3 text-xs leading-5 text-[#6f665a]">
+                        
+                      </div>
                     </div>
 
                     <div>
@@ -842,7 +1075,16 @@ export default function SplitDispenseMiniApp() {
                           <div className="grid gap-3 md:grid-cols-2">
                             {selectedLabelImages.map((src, index) => (
                               <div key={`${src}-${index}`} className="rounded-xl border border-[#e5dccf] bg-white p-3">
-                                <img src={versionedSrc(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto max-h-[180px] w-full object-contain" />
+                                <div className="relative">
+                                  <img src={versionedSrc(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto max-h-[180px] w-full object-contain [image-rendering:crisp-edges]" />
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleFavorite(src)}
+                                    className="absolute top-1 right-1 rounded bg-white/80 px-1 text-xs"
+                                  >
+                                    ★
+                                  </button>
+                                </div>
                                 <div className="mt-2 flex items-center justify-between gap-2 text-sm text-[#6e665b]">
                                   <span>{index + 1}번 라벨</span>
                                   <div className="flex items-center gap-2">
@@ -897,9 +1139,10 @@ export default function SplitDispenseMiniApp() {
                       <Label>라벨 내용</Label>
                       <div className="mt-2 mb-3 flex flex-wrap gap-2">
                         <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} className="rounded border px-2 py-1 text-sm">
-                          <option value="12">작게</option>
-                          <option value="14">기본</option>
-                          <option value="16">크게</option>
+                          <option value="24">작게</option>
+                          <option value="30">보통</option>
+                          <option value="36">크게</option>
+                          <option value="42">매우 크게</option>
                         </select>
 
                         <select value={textAlign} onChange={(e) => setTextAlign(e.target.value as "left" | "center" | "right")} className="rounded border px-2 py-1 text-sm">
@@ -1064,7 +1307,7 @@ export default function SplitDispenseMiniApp() {
                             className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm"
                             style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm` }}
                           >
-                            <img src={versionedSrc(src)} alt={`출력용 라벨 ${index + 1}`} className="h-full w-full object-contain" />
+                            <img src={versionedSrc(src)} alt={`출력용 라벨 ${index + 1}`} className="h-full w-full object-contain [image-rendering:crisp-edges]" />
                           </div>
                         ))
                       ) : (
@@ -1098,7 +1341,7 @@ export default function SplitDispenseMiniApp() {
                   <div className="grid gap-4 md:grid-cols-2">
                     {selectedLabelImages.map((src, index) => (
                       <div key={`${src}-modal-${index}`} className="overflow-hidden rounded-[18px] border border-slate-300 bg-white">
-                        <img src={versionedSrc(src)} alt="preview" className="h-full w-full object-contain" />
+                        <img src={versionedSrc(src)} alt="preview" className="h-full w-full object-contain [image-rendering:crisp-edges]" />
                       </div>
                     ))}
                   </div>
