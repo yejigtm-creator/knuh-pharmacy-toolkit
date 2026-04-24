@@ -122,6 +122,11 @@ const clampPositive = (value: string, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const clampNonNegative = (value: string, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
 const getFractionScore = (tabs: number): number => {
   const fraction = ((tabs % 1) + 1) % 1;
   const quarterTargets = [0, 0.25, 0.5, 0.75];
@@ -336,7 +341,7 @@ function TabButton({ active, label, onClick }: { active: boolean; label: string;
       type="button"
       onClick={onClick}
       className={[
-        "relative rounded-full px-8 py-3 text-base font-semibold transition-all duration-200 ease-out select-none",
+        "relative cursor-pointer rounded-full px-8 py-3 text-base font-semibold transition-all duration-200 ease-out select-none",
         "border border-white/60",
         "active:translate-y-[2px] active:scale-[0.985]",
         active
@@ -374,7 +379,7 @@ function PebbleButton({
       type="button"
       onClick={onClick}
       className={[
-        "relative rounded-full px-6 py-3 text-base font-semibold transition-all duration-200 ease-out border border-white/60",
+        "relative cursor-pointer rounded-full px-6 py-3 text-base font-semibold transition-all duration-200 ease-out border border-white/60",
         "active:translate-y-[2px] active:scale-[0.985]",
         variant === "sage"
           ? "bg-[#7A816C] text-white shadow-[0_14px_24px_rgba(116,106,88,0.22),0_3px_4px_rgba(255,255,255,0.28)_inset,0_-10px_16px_rgba(122,129,108,0.22)_inset]"
@@ -489,7 +494,7 @@ export default function SplitDispenseMiniApp() {
   const printConfig = useMemo(() => {
     const width = clampPositive(labelWidthMm, 90);
     const height = clampPositive(labelHeightMm, 50);
-    const padding = clampPositive(labelPaddingMm, 4);
+    const padding = clampNonNegative(labelPaddingMm, 0);
     const copies = Math.max(1, Math.min(50, Math.floor(clampPositive(labelCopies, 1))));
     return { width, height, padding, copies };
   }, [labelWidthMm, labelHeightMm, labelPaddingMm, labelCopies]);
@@ -725,6 +730,12 @@ export default function SplitDispenseMiniApp() {
   return (
     <div className="min-h-screen bg-[#e7dfd2] p-6">
       <style>{`
+        button:not(:disabled), select, input[type="button"], input[type="submit"], input[type="reset"] {
+          cursor: pointer;
+        }
+        button:disabled {
+          cursor: not-allowed;
+        }
         @media print {
           body * { visibility: hidden; }
           #label-print, #label-print * { visibility: visible; }
