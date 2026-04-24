@@ -1056,9 +1056,7 @@ export default function SplitDispenseMiniApp() {
                         </div>
                       </div>
                       <div className="mt-2 text-xs text-[#8a8175]">이미지를 선택하면 목록에 추가되고, 선택한 순서대로 출력됩니다.</div>
-                      <div className="mt-3 rounded-xl bg-[#ede6da] p-3 text-xs leading-5 text-[#6f665a]">
-                        
-                      </div>
+                      
                     </div>
 
                     <div>
