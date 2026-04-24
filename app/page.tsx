@@ -730,6 +730,10 @@ export default function SplitDispenseMiniApp() {
   return (
     <div className="min-h-screen bg-[#e7dfd2] p-6">
       <style>{`
+        html {
+          overflow-y: scroll;
+          scrollbar-gutter: stable;
+        }
         button:not(:disabled), select, input[type="button"], input[type="submit"], input[type="reset"] {
           cursor: pointer;
         }
@@ -985,7 +989,7 @@ export default function SplitDispenseMiniApp() {
                           </div>
                         </div>
                       )}
-                      <div className="grid gap-4 grid-cols-4">
+                      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">
                         <div>
                           <Label>복용 이미지</Label>
                           <select
