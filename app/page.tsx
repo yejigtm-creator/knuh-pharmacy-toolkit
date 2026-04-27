@@ -1182,8 +1182,8 @@ export default function App() {
 
         {tab === "split" && <div className="space-y-6"><SectionCard title="분할조제 계산" description="mg 또는 T 단위 처방 기준으로 몇 정을 몇 포로 나눌지 계산"><div className="space-y-5"><div className="flex items-center justify-between gap-3">
   <div className="flex flex-wrap items-center gap-3">
-    <PebbleButton onClick={() => setSplitMode("mg")} variant={splitMode === "mg" ? "sage" : "light"}>mg 기준</PebbleButton>
-    <PebbleButton onClick={() => setSplitMode("t")} variant={splitMode === "t" ? "sage" : "light"}>T 기준</PebbleButton>
+    <PebbleButton onClick={() => { setSplitMode("mg"); resetMgInputs(); }} variant={splitMode === "mg" ? "sage" : "light"}>mg 기준</PebbleButton>
+    <PebbleButton onClick={() => { setSplitMode("t"); resetTInputs(); }} variant={splitMode === "t" ? "sage" : "light"}>T 기준</PebbleButton>
   </div>
   <button
     type="button"
