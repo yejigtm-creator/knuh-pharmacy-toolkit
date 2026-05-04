@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 type TabKey = "split" | "syrup" | "label";
 type SplitMode = "mg" | "t";
-type LabelMode = "text" | "image" | "syrup";
+type LabelMode = "text" | "image" | "syrup" | "er";
 type ImageCategory = "take" | "stop" | "pictogram" | "prep";
 
 type Recommendation = {
@@ -124,6 +124,20 @@ const SYRUP_LABEL_PRESETS = [
   "피알디현탁시럽",
 ].sort((a, b) => a.localeCompare(b, "ko"));
 
+const ER_LABEL_PRESETS = [
+  "세토펜 현탁액",
+  "어린이 부루펜 시럽",
+  "푸로스판 시럽",
+  "포리부틴 건조시럽",
+  "오구멘틴 건조시럽",
+  "파목신 시럽",
+].sort((a, b) => a.localeCompare(b, "ko"));
+
+type ErLabelItem = {
+  name: string;
+  volume: string;
+};
+
 const getSyrupExpiryDate = (baseDate = new Date()): string => {
   const d = new Date(baseDate);
   d.setMonth(d.getMonth() + 1);
@@ -135,6 +149,33 @@ const getSyrupExpiryDate = (baseDate = new Date()): string => {
 };
 
 const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 6 ? 2 : 3;
+
+const formatErDate = (baseDate = new Date()): string => {
+  const yyyy = String(baseDate.getFullYear());
+  const mm = String(baseDate.getMonth() + 1).padStart(2, "0");
+  const dd = String(baseDate.getDate()).padStart(2, "0");
+  return yyyy + "." + mm + "." + dd;
+};
+
+const getErDiscardDate = (baseDate = new Date()): string => {
+  const d = new Date(baseDate);
+  d.setMonth(d.getMonth() + 6);
+  d.setDate(d.getDate() - 1);
+  return formatErDate(d);
+};
+
+const getErDrugNameLines = (name: string): string[] => {
+  const cleaned = name.trim();
+  if (!cleaned) return [""];
+  const words = cleaned.split(" ").filter(Boolean);
+  if (words.length <= 1) {
+    if (cleaned.length <= 7) return [cleaned];
+    const cut = Math.ceil(cleaned.length / 2);
+    return [cleaned.slice(0, cut), cleaned.slice(cut)];
+  }
+  const mid = Math.ceil(words.length / 2);
+  return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
+};
 
 const SYRUP_INFO: Record<string, { storage: "냉장" | "실온"; duration: string }> = {
   "듀리세프 건조시럽": { storage: "냉장", duration: "14일" },
@@ -1156,6 +1197,11 @@ export default function App() {
   const [syrupLabelDrug, setSyrupLabelDrug] = useState("니스타틴시럽");
   const [syrupLabelCustomDrug, setSyrupLabelCustomDrug] = useState("");
   const [selectedSyrupLabels, setSelectedSyrupLabels] = useState<string[]>([]);
+  const [erLabelDrug, setErLabelDrug] = useState(ER_LABEL_PRESETS[0] ?? "");
+  const [erLabelCustomDrug, setErLabelCustomDrug] = useState("");
+  const [erLabelVolume, setErLabelVolume] = useState("");
+  const [selectedErLabels, setSelectedErLabels] = useState<ErLabelItem[]>([]);
+  const [erLabelSetCopies, setErLabelSetCopies] = useState("1");
   const labelTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const resetMgInputs = () => {
@@ -1207,6 +1253,12 @@ export default function App() {
   const syrupLabelTotal = syrupLabelColumns * syrupLabelRows;
   const syrupLabelText = `${syrupLabelName} ${syrupLabelExpiry}`;
   const syrupLabelPrintList = selectedSyrupLabels.length > 0 ? selectedSyrupLabels : [syrupLabelName];
+  const erLabelName = erLabelCustomDrug.trim() || erLabelDrug;
+  const erLabelMadeDate = useMemo(() => formatErDate(new Date()), []);
+  const erLabelDiscardDate = useMemo(() => getErDiscardDate(new Date()), []);
+  const erLabelCopies = Math.max(1, Math.floor(clampPositive(erLabelSetCopies, 1)));
+  const erLabelPreviewList = selectedErLabels.length > 0 ? selectedErLabels : (erLabelName ? [{ name: erLabelName, volume: erLabelVolume }] : []);
+  const erPreviewSheets = erLabelPreviewList.map((item) => Array.from({ length: 4 }, () => item));
 
   const addImageLabel = (src: string) => { if (!src) return; setSelectedLabelImages((prev) => [...prev, src]); setTakeImageSelection(""); setStopImageSelection(""); setPictogramImageSelection(""); setPrepImageSelection(""); };
   const addSyrupLabel = () => {
@@ -1217,6 +1269,16 @@ export default function App() {
   };
   const removeSyrupLabelAt = (index: number) => setSelectedSyrupLabels((prev) => prev.filter((_, i) => i !== index));
   const clearSelectedSyrupLabels = () => setSelectedSyrupLabels([]);
+  const addErLabel = () => {
+    const name = erLabelName.trim();
+    const volume = erLabelVolume.trim();
+    if (!name || !volume) return;
+    setSelectedErLabels((prev) => [...prev, { name, volume }]);
+    setErLabelCustomDrug("");
+    setErLabelVolume("");
+  };
+  const removeErLabelAt = (index: number) => setSelectedErLabels((prev) => prev.filter((_, i) => i !== index));
+  const clearSelectedErLabels = () => setSelectedErLabels([]);
   const toggleFavorite = (src: string) => {
     setFavoriteImages((prev) => { const next = prev.includes(src) ? prev.filter((item) => item !== src) : [src, ...prev]; if (typeof window !== "undefined") window.localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(next)); return next; });
   };
@@ -1264,6 +1326,28 @@ export default function App() {
     printWindow.print();
   };
 
+  const handleErLabelPrint = () => {
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) return;
+    const list = selectedErLabels.length > 0 ? selectedErLabels : erLabelPreviewList;
+    const repeated = Array.from({ length: erLabelCopies }, () => list).flat();
+    const sheets: string[] = [];
+    repeated.forEach((item) => {
+      const group = Array.from({ length: 4 }, () => item);
+      const cells = group.map((item) => {
+        const lines = getErDrugNameLines(item.name);
+        const nameHtml = lines.map((line) => "<div>" + line + "</div>").join("");
+        return "<div class=\"er-label-cell\"><div class=\"er-drug-name\">" + nameHtml + "</div><div class=\"er-volume\">" + item.volume + " mL</div><div class=\"er-date-block\"><div>소분일자:</div><div>" + erLabelMadeDate + "</div><div>폐기일자:</div><div>" + erLabelDiscardDate + "</div></div></div>";
+      }).join("");
+      sheets.push("<div class=\"er-label-sheet\"><div class=\"er-label-grid\">" + cells + "</div></div>");
+    });
+    const html = "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\" /><title>응급실 라벨 출력</title><style>@page { size: 90mm 50mm; margin: 0; } html, body { margin: 0; padding: 0; background: white; font-family: \"Malgun Gothic\", Arial, sans-serif; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .er-label-sheet { width: 90mm; height: 50mm; box-sizing: border-box; padding-top: 6mm; padding-left: 7mm; background: white; page-break-after: always; overflow: hidden; } .er-label-grid { display: grid; grid-template-columns: repeat(4, 19mm); grid-template-rows: 29mm; width: 76mm; height: 29mm; border-top: 0.35mm solid #000; border-left: 0.35mm solid #000; } .er-label-cell { width: 19mm; height: 29mm; box-sizing: border-box; border-right: 0.35mm solid #000; border-bottom: 0.35mm solid #000; overflow: hidden; padding: 1.1mm 1mm 0.7mm 1mm; text-align: center; color: #000; font-weight: 700; } .er-drug-name { height: 9.2mm; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 3.7mm; line-height: 0.95; letter-spacing: -0.25mm; word-break: keep-all; } .er-volume { height: 5.2mm; display: flex; align-items: center; justify-content: center; font-size: 3.9mm; line-height: 1; font-weight: 800; } .er-date-block { margin-top: 1.2mm; text-align: left; font-size: 2.35mm; line-height: 1.18; font-weight: 600; letter-spacing: -0.1mm; }</style></head><body>" + sheets.join("") + "</body></html>";
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   const symbolButtons = ["☆", "★", "○", "-", "·", "＊", "※", "→", "▶", "경고"];
 
   return (
@@ -1289,7 +1373,7 @@ export default function App() {
 
         {tab === "syrup" && <div className="space-y-6"><SectionCard title="건조시럽 조제"><div className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><div><Label>약품 선택</Label><select value={selectedSyrup} onChange={(e) => setSelectedSyrup(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{SORTED_SYRUP_DRUGS.map((drug) => <option key={drug.name} value={drug.name}>{drug.name}</option>)}</select></div><div><Label>제조할 최종 용량</Label><Input value={syrupMl} onChange={(e) => setSyrupMl(e.target.value)} placeholder="mL" /></div></div>{syrupInfo && <div className={`rounded-xl p-4 text-base font-semibold ${syrupInfo.storage === "냉장" ? "bg-[#e3ebe6] text-[#4b5a3f]" : "bg-[#efe3e6] text-[#6a4b4f]"}`}>{syrupInfo.storage === "냉장" ? "❄️ " : "🏠 "}조제 후 {syrupInfo.storage} 보관 / 유효기간 {syrupInfo.duration}</div>}<div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">계산식: 약품별 g/mL × 제조할 mL = 필요한 분말량(g)</div></div></SectionCard><Card className="rounded-3xl border border-[#e5dccf] bg-[#f8f4ed]"><CardContent className="p-6"><ResultBox label="필요한 분말량" value={syrupAmount > 0 ? `${syrupAmount} g` : "-"} /></CardContent></Card></div>}
 
-        {tab === "label" && <div className="space-y-6"><SectionCard title="라벨 제작"><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-3"><PebbleButton onClick={() => setLabelMode("text")} variant={labelMode === "text" ? "sage" : "light"}>텍스트 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("image")} variant={labelMode === "image" ? "sage" : "light"}>프리셋 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("syrup")} variant={labelMode === "syrup" ? "sage" : "light"}>시럽 라벨</PebbleButton></div>{labelMode === "image" && <div className="space-y-4">{favoriteImages.length > 0 && <div className="rounded-2xl border border-[#e5dccf] bg-white p-4"><div className="mb-3 flex items-center justify-between"><div className="text-sm font-semibold text-[#6e665b]">즐겨찾기</div><div className="text-xs text-[#8a8175]">★ 버튼으로 추가/해제</div></div><div className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">{favoriteImages.map((src) => LABEL_IMAGE_PRESETS.find((item) => item.src === src)).filter((item): item is LabelImagePreset => Boolean(item)).map((item) => <button key={`favorite-${item.key}`} type="button" onClick={() => addImageLabel(item.src)} className="flex items-center justify-between rounded-xl border border-[#e5dccf] bg-[#f8f4ed] px-3 py-2 text-left text-sm text-[#5f574d] hover:bg-[#f1eadf]"><span className="truncate pr-2">{item.label}</span><span className="text-[#b08b2e]">★</span></button>)}</div></div>}<div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">{([["복용 라벨", takeImageSelection, setTakeImageSelection, imagePresetsByCategory.take, "복용 라벨 선택"], ["복용 중단 라벨", stopImageSelection, setStopImageSelection, imagePresetsByCategory.stop, "복용 중단 라벨 선택"], ["약종류 라벨", pictogramImageSelection, setPictogramImageSelection, imagePresetsByCategory.pictogram, "약종류 라벨 선택"], ["조제방법 라벨", prepImageSelection, setPrepImageSelection, imagePresetsByCategory.prep, "조제방법 라벨 선택"]] as const).map(([title, value, setter, items, placeholder]) => <div key={title}><Label>{title}</Label><select value={value} onChange={(e) => { setter(e.target.value); addImageLabel(e.target.value); }} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">{placeholder}</option>{items.map((item) => <option key={item.key} value={item.src}>{item.label}</option>)}</select></div>)}</div><div className="mt-2 text-xs text-[#8a8175]">라벨을 선택하면 목록에 추가되고, 선택한 순서대로 출력됩니다.</div><div><div className="mb-2 flex items-center justify-between"><Label>선택된 프리셋 라벨 목록</Label>{selectedLabelImages.length > 0 && <button type="button" onClick={clearSelectedImages} className="text-sm text-[#8a8175] underline underline-offset-2">전체 비우기</button>}</div><div className="rounded-2xl border border-input bg-background p-4">{selectedLabelImages.length > 0 ? <div className="grid grid-cols-4 gap-3 auto-rows-fr">{selectedLabelImages.map((src, index) => <div key={`${src}-${index}`} className="rounded-xl border border-[#e5dccf] bg-white p-3"><div className="relative">{isHtmlLabel(src) ? <div className="relative mx-auto overflow-hidden rounded bg-white" style={{ width: "100%", aspectRatio: `${printConfig.width} / ${printConfig.height}` }}><div className="absolute left-1/2 top-1/2 overflow-hidden bg-white" style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm`, transform: "translate(-50%, -50%) scale(0.55)", transformOrigin: "center center" }}>{renderHtmlLabel(src)}</div></div> : <img src={versionedSrc(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto h-full max-h-[120px] w-full object-contain" />}<button type="button" onClick={() => toggleFavorite(src)} className="absolute top-1 right-1 rounded bg-white/80 px-1 text-xs">★</button></div><div className="mt-2 flex items-center justify-between gap-2 text-sm text-[#6e665b]"><span>{index + 1}번 라벨</span><div className="flex items-center gap-2"><button type="button" onClick={() => moveSelectedImage(index, "up")} disabled={index === 0} className="text-[#8a8175] underline underline-offset-2 disabled:no-underline disabled:opacity-40">↑</button><button type="button" onClick={() => moveSelectedImage(index, "down")} disabled={index === selectedLabelImages.length - 1} className="text-[#8a8175] underline underline-offset-2 disabled:no-underline disabled:opacity-40">↓</button><button type="button" onClick={() => removeSelectedImageAt(index)} className="text-[#8a8175] underline underline-offset-2">제거</button></div></div></div>)}</div> : <div className="flex min-h-[220px] items-center justify-center text-sm text-[#8a8175]">드롭박스에서 프리셋 라벨을 선택하세요</div>}</div></div></div>}{labelMode === "syrup" && (
+        {tab === "label" && <div className="space-y-6"><SectionCard title="라벨 제작"><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-3"><PebbleButton onClick={() => setLabelMode("text")} variant={labelMode === "text" ? "sage" : "light"}>텍스트 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("image")} variant={labelMode === "image" ? "sage" : "light"}>프리셋 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("syrup")} variant={labelMode === "syrup" ? "sage" : "light"}>시럽 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("er")} variant={labelMode === "er" ? "sage" : "light"}>응급실 라벨</PebbleButton></div>{labelMode === "image" && <div className="space-y-4">{favoriteImages.length > 0 && <div className="rounded-2xl border border-[#e5dccf] bg-white p-4"><div className="mb-3 flex items-center justify-between"><div className="text-sm font-semibold text-[#6e665b]">즐겨찾기</div><div className="text-xs text-[#8a8175]">★ 버튼으로 추가/해제</div></div><div className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">{favoriteImages.map((src) => LABEL_IMAGE_PRESETS.find((item) => item.src === src)).filter((item): item is LabelImagePreset => Boolean(item)).map((item) => <button key={`favorite-${item.key}`} type="button" onClick={() => addImageLabel(item.src)} className="flex items-center justify-between rounded-xl border border-[#e5dccf] bg-[#f8f4ed] px-3 py-2 text-left text-sm text-[#5f574d] hover:bg-[#f1eadf]"><span className="truncate pr-2">{item.label}</span><span className="text-[#b08b2e]">★</span></button>)}</div></div>}<div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">{([["복용 라벨", takeImageSelection, setTakeImageSelection, imagePresetsByCategory.take, "복용 라벨 선택"], ["복용 중단 라벨", stopImageSelection, setStopImageSelection, imagePresetsByCategory.stop, "복용 중단 라벨 선택"], ["약종류 라벨", pictogramImageSelection, setPictogramImageSelection, imagePresetsByCategory.pictogram, "약종류 라벨 선택"], ["조제방법 라벨", prepImageSelection, setPrepImageSelection, imagePresetsByCategory.prep, "조제방법 라벨 선택"]] as const).map(([title, value, setter, items, placeholder]) => <div key={title}><Label>{title}</Label><select value={value} onChange={(e) => { setter(e.target.value); addImageLabel(e.target.value); }} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">{placeholder}</option>{items.map((item) => <option key={item.key} value={item.src}>{item.label}</option>)}</select></div>)}</div><div className="mt-2 text-xs text-[#8a8175]">라벨을 선택하면 목록에 추가되고, 선택한 순서대로 출력됩니다.</div><div><div className="mb-2 flex items-center justify-between"><Label>선택된 프리셋 라벨 목록</Label>{selectedLabelImages.length > 0 && <button type="button" onClick={clearSelectedImages} className="text-sm text-[#8a8175] underline underline-offset-2">전체 비우기</button>}</div><div className="rounded-2xl border border-input bg-background p-4">{selectedLabelImages.length > 0 ? <div className="grid grid-cols-4 gap-3 auto-rows-fr">{selectedLabelImages.map((src, index) => <div key={`${src}-${index}`} className="rounded-xl border border-[#e5dccf] bg-white p-3"><div className="relative">{isHtmlLabel(src) ? <div className="relative mx-auto overflow-hidden rounded bg-white" style={{ width: "100%", aspectRatio: `${printConfig.width} / ${printConfig.height}` }}><div className="absolute left-1/2 top-1/2 overflow-hidden bg-white" style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm`, transform: "translate(-50%, -50%) scale(0.55)", transformOrigin: "center center" }}>{renderHtmlLabel(src)}</div></div> : <img src={versionedSrc(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto h-full max-h-[120px] w-full object-contain" />}<button type="button" onClick={() => toggleFavorite(src)} className="absolute top-1 right-1 rounded bg-white/80 px-1 text-xs">★</button></div><div className="mt-2 flex items-center justify-between gap-2 text-sm text-[#6e665b]"><span>{index + 1}번 라벨</span><div className="flex items-center gap-2"><button type="button" onClick={() => moveSelectedImage(index, "up")} disabled={index === 0} className="text-[#8a8175] underline underline-offset-2 disabled:no-underline disabled:opacity-40">↑</button><button type="button" onClick={() => moveSelectedImage(index, "down")} disabled={index === selectedLabelImages.length - 1} className="text-[#8a8175] underline underline-offset-2 disabled:no-underline disabled:opacity-40">↓</button><button type="button" onClick={() => removeSelectedImageAt(index)} className="text-[#8a8175] underline underline-offset-2">제거</button></div></div></div>)}</div> : <div className="flex min-h-[220px] items-center justify-center text-sm text-[#8a8175]">드롭박스에서 프리셋 라벨을 선택하세요</div>}</div></div></div>}{labelMode === "syrup" && (
   <div className="space-y-5">
     <div className="grid gap-4 md:grid-cols-3">
       <div>
@@ -1303,8 +1387,8 @@ export default function App() {
         <Input value={syrupLabelCustomDrug} onChange={(e) => setSyrupLabelCustomDrug(e.target.value)} placeholder="직접 입력 시 우선 적용" />
       </div>
       <div className="flex items-end gap-2">
-        <button type="button" onClick={addSyrupLabel} className="h-10 rounded-full bg-[#7A816C] px-5 text-sm font-semibold text-white shadow-sm hover:bg-[#6d745f]">목록 추가</button>
-        <button type="button" onClick={() => setSyrupLabelCustomDrug("")} className="h-10 rounded-full border border-[#d9cfc2] bg-white px-4 text-sm font-semibold text-[#6b6156] underline underline-offset-2 hover:bg-[#f3ede3]">직접입력 초기화</button>
+        <PebbleButton onClick={addSyrupLabel} variant="sage" className="h-10 px-5 py-0 text-sm flex items-center justify-center leading-none">목록 추가</PebbleButton>
+        <PebbleButton onClick={() => setSyrupLabelCustomDrug("")} variant="light" className="h-10 px-4 py-0 text-sm flex items-center justify-center leading-none">직접입력 초기화</PebbleButton>
       </div>
     </div>
 
@@ -1325,7 +1409,59 @@ export default function App() {
       </div>
     </div>
   </div>
-)}{labelMode === "text" && <div className="space-y-4"><div><Label>템플릿명</Label><Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="예: 아목시실린 기본 라벨" /></div><div><Label>라벨 내용</Label><div className="mt-2 mb-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap"><select value={fontSize} onChange={(e) => setFontSize(e.target.value)} className="rounded border px-2 py-1 text-sm"><option value="24">작게</option><option value="30">보통</option><option value="36">크게</option><option value="42">매우 크게</option></select><select value={textAlign} onChange={(e) => setTextAlign(e.target.value as "left" | "center" | "right")} className="rounded border px-2 py-1 text-sm"><option value="left">좌측</option><option value="center">가운데</option><option value="right">우측</option></select><button type="button" onClick={() => setIsBold((v) => !v)} className={`rounded border px-3 py-1 text-sm ${isBold ? "bg-[#7A816C] text-white" : "bg-white"}`}>B</button><button type="button" onClick={() => setIsUnderline((v) => !v)} className={`rounded border px-3 py-1 text-sm ${isUnderline ? "bg-[#7A816C] text-white" : "bg-white"}`}>U</button><select value={lineHeight} onChange={(e) => setLineHeight(e.target.value)} className="rounded border px-2 py-1 text-sm"><option value="1.4">좁게</option><option value="1.6">기본</option><option value="1.8">넓게</option></select>{symbolButtons.map((symbol) => <button key={symbol} type="button" onClick={() => insertSymbol(symbol)} className="h-8 shrink-0 rounded border bg-white px-2.5 text-sm hover:bg-[#f3ede3]">{symbol}</button>)}<button type="button" onClick={() => setLabelContent("")} className="ml-auto h-8 shrink-0 rounded border bg-white px-3 text-sm text-[#6b6156] hover:bg-[#f3ede3]">초기화</button></div><textarea ref={labelTextareaRef} value={labelContent} onChange={(e) => setLabelContent(e.target.value)} placeholder={`예:\n아목시실린 건조시럽\n1회 1포, 1일 3회\n식후 복용\n냉암소 보관`} className="min-h-[220px] w-full rounded-2xl border border-input bg-background px-3 py-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground" /></div></div>}{labelMode !== "syrup" && <div className="grid gap-4 md:grid-cols-4"><div><Label>라벨 가로(mm)</Label><Input value={labelWidthMm} onChange={(e) => setLabelWidthMm(e.target.value)} placeholder="90" /></div><div><Label>라벨 세로(mm)</Label><Input value={labelHeightMm} onChange={(e) => setLabelHeightMm(e.target.value)} placeholder="50" /></div><div><Label>내부 여백(mm)</Label><Input value={labelPaddingMm} onChange={(e) => setLabelPaddingMm(e.target.value)} placeholder="0" /></div><div><Label>{labelMode === "image" ? "세트 반복 수량" : "출력 수량"}</Label><Input value={labelCopies} onChange={(e) => setLabelCopies(e.target.value)} placeholder="1" /></div></div>}</div><div className="mt-6 mb-2 flex flex-wrap gap-3">{labelMode === "text" && <PebbleButton onClick={handleSaveLabel} variant="sage">라벨 저장</PebbleButton>}<PebbleButton onClick={labelMode === "syrup" ? handleSyrupLabelPrint : handlePrint} variant="sage">라벨 출력</PebbleButton></div></SectionCard>{labelMode === "text" ? <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]"><Card className="rounded-3xl border border-[#e5dccf] bg-[#f3ede3]"><CardHeader><CardTitle className="text-xl text-[#3e372f]">저장된 라벨</CardTitle></CardHeader><CardContent className="space-y-3">{savedLabels.length > 0 ? savedLabels.map((item) => <div key={item.id} className="rounded-2xl border border-[#e5dccf] bg-white p-4"><div className="font-semibold text-[#3e372f]">{item.name}</div><div className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-[#6e665b]">{item.content || "내용 없음"}</div><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => handleLoadLabel(item)}>불러오기</Button><Button variant="outline" onClick={() => handleDeleteLabel(item.id)}>삭제</Button></div></div>) : <div className="text-sm text-[#8a8175]">저장된 라벨이 없습니다.</div>}</CardContent></Card><LabelPreviewCard labelMode={labelMode} printConfig={printConfig} labelContent={labelContent} fontSize={fontSize} textAlign={textAlign} isBold={isBold} isUnderline={isUnderline} lineHeight={lineHeight} selectedLabelImages={selectedLabelImages} /></div> : labelMode === "image" ? <LabelPreviewCard labelMode={labelMode} printConfig={printConfig} labelContent={labelContent} fontSize={fontSize} textAlign={textAlign} isBold={isBold} isUnderline={isUnderline} lineHeight={lineHeight} selectedLabelImages={selectedLabelImages} /> : null}</div>}
+)}{labelMode === "er" && (
+  <div className="space-y-5">
+    <div className="grid gap-4 md:grid-cols-4">
+      <div>
+        <Label>약품명 선택</Label>
+        <select value={erLabelDrug} onChange={(e) => setErLabelDrug(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          {ER_LABEL_PRESETS.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+      </div>
+      <div>
+        <Label>직접 입력</Label>
+        <Input value={erLabelCustomDrug} onChange={(e) => setErLabelCustomDrug(e.target.value)} placeholder="직접 입력 시 우선 적용" />
+      </div>
+      <div>
+        <Label>총량</Label>
+        <div className="relative">
+          <Input value={erLabelVolume} onChange={(e) => setErLabelVolume(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="숫자만 입력" className="pr-12" />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#8a8175]">mL</span>
+        </div>
+      </div>
+      <div>
+        <Label>출력 세트 수</Label>
+        <Input value={erLabelSetCopies} onChange={(e) => setErLabelSetCopies(e.target.value.replace(/[^0-9]/g, ""))} placeholder="1" />
+      </div>
+    </div>
+
+    <div className="flex flex-wrap gap-2">
+      <PebbleButton onClick={addErLabel} variant="sage" className="h-10 px-5 py-0 text-sm flex items-center justify-center leading-none">목록 추가</PebbleButton>
+      <PebbleButton onClick={() => { setErLabelCustomDrug(""); setErLabelVolume(""); }} variant="light" className="h-10 px-4 py-0 text-sm flex items-center justify-center leading-none">입력 초기화</PebbleButton>
+    </div>
+
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <Label>선택된 응급실 라벨 목록</Label>
+        {selectedErLabels.length > 0 && <button type="button" onClick={clearSelectedErLabels} className="text-sm text-[#8a8175] underline underline-offset-2">전체 비우기</button>}
+      </div>
+      <div className="rounded-2xl border border-input bg-background p-4">
+        {selectedErLabels.length > 0 ? <div className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">{selectedErLabels.map((item, index) => <div key={item.name + index} className="rounded-xl border border-[#e5dccf] bg-white px-3 py-2 text-sm text-[#5f574d]"><div className="font-semibold text-[#3e372f]">{item.name}</div><div className="mt-1 text-xs text-[#8a8175]">{item.volume} mL · {erLabelMadeDate}</div><div className="mt-2 flex justify-between text-xs text-[#8a8175]"><span>{index + 1}번 라벨</span><button type="button" onClick={() => removeErLabelAt(index)} className="underline underline-offset-2">제거</button></div></div>)}</div> : <div className="flex min-h-[80px] items-center justify-center text-sm text-[#8a8175]">약품명과 총량을 입력한 뒤 목록 추가를 누르세요.</div>}
+      </div>
+    </div>
+
+    <div className="rounded-2xl border border-[#e5dccf] bg-[#ebe4d8] p-4">
+      <div className="mb-3 text-sm font-semibold text-[#6e665b]">출력 미리보기</div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {erPreviewSheets.map((cells, sheetIndex) => <div key={sheetIndex} className="mx-auto overflow-hidden bg-white shadow-sm ring-1 ring-[#d9cfc2]" style={{ width: "90mm", height: "50mm", paddingTop: "6mm", paddingLeft: "7mm", boxSizing: "border-box" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 19mm)", gridTemplateRows: "29mm", width: "76mm", height: "29mm", borderTop: "0.35mm solid #000", borderLeft: "0.35mm solid #000" }}>
+            {cells.map((item, index) => <div key={item.name + index} style={{ width: "19mm", height: "29mm", boxSizing: "border-box", borderRight: "0.35mm solid #000", borderBottom: "0.35mm solid #000", overflow: "hidden", padding: "1.1mm 1mm 0.7mm 1mm", textAlign: "center", color: "#000", fontWeight: 700 }}><div style={{ height: "9.2mm", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: "3.4mm", lineHeight: 1.1, letterSpacing: "-0.3mm", wordBreak: "keep-all" }}>{getErDrugNameLines(item.name).slice(0, 2).map((line, lineIndex) => <div key={lineIndex}>{line}</div>)}</div><div style={{ height: "5.2mm", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.8mm", lineHeight: 1, fontWeight: 800 }}>{item.volume || ""} mL</div><div style={{ marginTop: "1.8mm", textAlign: "left", fontSize: "2.35mm", lineHeight: 1.18, fontWeight: 600, letterSpacing: "-0.1mm" }}><div>소분일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelMadeDate}</div><div>폐기일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelDiscardDate}</div></div></div>)}
+          </div>
+        </div>)}
+      </div>
+    </div>
+  </div>
+)}{labelMode === "text" && <div className="space-y-4"><div><Label>템플릿명</Label><Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="예: 아목시실린 기본 라벨" /></div><div><Label>라벨 내용</Label><div className="mt-2 mb-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap"><select value={fontSize} onChange={(e) => setFontSize(e.target.value)} className="rounded border px-2 py-1 text-sm"><option value="24">작게</option><option value="30">보통</option><option value="36">크게</option><option value="42">매우 크게</option></select><select value={textAlign} onChange={(e) => setTextAlign(e.target.value as "left" | "center" | "right")} className="rounded border px-2 py-1 text-sm"><option value="left">좌측</option><option value="center">가운데</option><option value="right">우측</option></select><button type="button" onClick={() => setIsBold((v) => !v)} className={`rounded border px-3 py-1 text-sm ${isBold ? "bg-[#7A816C] text-white" : "bg-white"}`}>B</button><button type="button" onClick={() => setIsUnderline((v) => !v)} className={`rounded border px-3 py-1 text-sm ${isUnderline ? "bg-[#7A816C] text-white" : "bg-white"}`}>U</button><select value={lineHeight} onChange={(e) => setLineHeight(e.target.value)} className="rounded border px-2 py-1 text-sm"><option value="1.4">좁게</option><option value="1.6">기본</option><option value="1.8">넓게</option></select>{symbolButtons.map((symbol) => <button key={symbol} type="button" onClick={() => insertSymbol(symbol)} className="h-8 shrink-0 rounded border bg-white px-2.5 text-sm hover:bg-[#f3ede3]">{symbol}</button>)}<button type="button" onClick={() => setLabelContent("")} className="ml-auto h-8 shrink-0 rounded border bg-white px-3 text-sm text-[#6b6156] hover:bg-[#f3ede3]">초기화</button></div><textarea ref={labelTextareaRef} value={labelContent} onChange={(e) => setLabelContent(e.target.value)} placeholder={`예:\n아목시실린 건조시럽\n1회 1포, 1일 3회\n식후 복용\n냉암소 보관`} className="min-h-[220px] w-full rounded-2xl border border-input bg-background px-3 py-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground" /></div></div>}{labelMode !== "syrup" && labelMode !== "er" && <div className="grid gap-4 md:grid-cols-4"><div><Label>라벨 가로(mm)</Label><Input value={labelWidthMm} onChange={(e) => setLabelWidthMm(e.target.value)} placeholder="90" /></div><div><Label>라벨 세로(mm)</Label><Input value={labelHeightMm} onChange={(e) => setLabelHeightMm(e.target.value)} placeholder="50" /></div><div><Label>내부 여백(mm)</Label><Input value={labelPaddingMm} onChange={(e) => setLabelPaddingMm(e.target.value)} placeholder="0" /></div><div><Label>{labelMode === "image" ? "세트 반복 수량" : "출력 수량"}</Label><Input value={labelCopies} onChange={(e) => setLabelCopies(e.target.value)} placeholder="1" /></div></div>}</div><div className="mt-6 mb-2 flex flex-wrap gap-3">{labelMode === "text" && <PebbleButton onClick={handleSaveLabel} variant="sage">라벨 저장</PebbleButton>}<PebbleButton onClick={labelMode === "syrup" ? handleSyrupLabelPrint : labelMode === "er" ? handleErLabelPrint : handlePrint} variant="sage">라벨 출력</PebbleButton></div></SectionCard>{labelMode === "text" ? <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]"><Card className="rounded-3xl border border-[#e5dccf] bg-[#f3ede3]"><CardHeader><CardTitle className="text-xl text-[#3e372f]">저장된 라벨</CardTitle></CardHeader><CardContent className="space-y-3">{savedLabels.length > 0 ? savedLabels.map((item) => <div key={item.id} className="rounded-2xl border border-[#e5dccf] bg-white p-4"><div className="font-semibold text-[#3e372f]">{item.name}</div><div className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-[#6e665b]">{item.content || "내용 없음"}</div><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" onClick={() => handleLoadLabel(item)}>불러오기</Button><Button variant="outline" onClick={() => handleDeleteLabel(item.id)}>삭제</Button></div></div>) : <div className="text-sm text-[#8a8175]">저장된 라벨이 없습니다.</div>}</CardContent></Card><LabelPreviewCard labelMode={labelMode} printConfig={printConfig} labelContent={labelContent} fontSize={fontSize} textAlign={textAlign} isBold={isBold} isUnderline={isUnderline} lineHeight={lineHeight} selectedLabelImages={selectedLabelImages} /></div> : labelMode === "image" ? <LabelPreviewCard labelMode={labelMode} printConfig={printConfig} labelContent={labelContent} fontSize={fontSize} textAlign={textAlign} isBold={isBold} isUnderline={isUnderline} lineHeight={lineHeight} selectedLabelImages={selectedLabelImages} /> : null}</div>}
       </div>
       {previewOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-6 py-10"><div className="w-full max-w-4xl rounded-[28px] border border-white/40 bg-[#f3ede3] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.16)]"><div className="mb-5 flex items-center justify-between"><div><div className="text-xl font-semibold text-[#3e372f]">라벨 크게 보기</div><div className="mt-1 text-sm text-[#6e665b]">{printConfig.width} × {printConfig.height} mm · 여백 {printConfig.padding} mm</div></div><PebbleButton onClick={() => setPreviewOpen(false)} variant="light">닫기</PebbleButton></div><div className="overflow-auto rounded-3xl bg-[#ebe4d8] p-8">{labelMode === "image" ? (selectedLabelImages.length > 0 ? <div className="grid gap-4 md:grid-cols-2">{selectedLabelImages.map((src, index) => <div key={`${src}-modal-${index}`} className="overflow-hidden rounded-[18px] border border-slate-300 bg-white" style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm` }}>{isHtmlLabel(src) ? renderHtmlLabel(src) : <img src={versionedSrc(src)} alt="preview" className="h-full w-full object-contain w-full h-auto object-contain" />}</div>)}</div> : <div className="flex min-h-[240px] items-center justify-center text-sm text-[#8a8175]">프리셋 라벨 미리보기</div>) : <div className="mx-auto flex items-center justify-center"><div className="flex flex-col rounded-xl border border-slate-300 bg-white text-slate-800 shadow-sm" style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm`, padding: `${printConfig.padding}mm` }}><div className="whitespace-pre-line" style={{ fontSize: `${fontSize}px`, textAlign, fontWeight: isBold ? "bold" : "normal", textDecoration: isUnderline ? "underline" : "none", lineHeight }}>{labelContent || "라벨 내용 미리보기"}</div></div></div>}</div></div></div>}
     </div>
