@@ -133,9 +133,12 @@ const ER_LABEL_PRESETS = [
   "파목신 시럽",
 ].sort((a, b) => a.localeCompare(b, "ko"));
 
+const ER_ONE_MONTH_DRUGS = ["세토펜 현탁액", "어린이 부루펜 시럽", "푸로스판 시럽"];
+
 type ErLabelItem = {
   name: string;
   volume: string;
+  expiryMonths: 1 | 6;
 };
 
 const getSyrupExpiryDate = (baseDate = new Date()): string => {
@@ -157,12 +160,14 @@ const formatErDate = (baseDate = new Date()): string => {
   return yyyy + "." + mm + "." + dd;
 };
 
-const getErDiscardDate = (baseDate = new Date()): string => {
+const getErDiscardDate = (baseDate = new Date(), months = 6): string => {
   const d = new Date(baseDate);
-  d.setMonth(d.getMonth() + 6);
+  d.setMonth(d.getMonth() + months);
   d.setDate(d.getDate() - 1);
   return formatErDate(d);
 };
+
+const getErExpiryMonths = (drugName: string): 1 | 6 => ER_ONE_MONTH_DRUGS.includes(drugName.trim()) ? 1 : 6;
 
 const getErDrugNameLines = (name: string): string[] => {
   const cleaned = name.trim();
@@ -1200,6 +1205,7 @@ export default function App() {
   const [erLabelDrug, setErLabelDrug] = useState(ER_LABEL_PRESETS[0] ?? "");
   const [erLabelCustomDrug, setErLabelCustomDrug] = useState("");
   const [erLabelVolume, setErLabelVolume] = useState("");
+  const [erLabelCustomExpiryMonths, setErLabelCustomExpiryMonths] = useState<"1" | "6">("6");
   const [selectedErLabels, setSelectedErLabels] = useState<ErLabelItem[]>([]);
   const [erLabelSetCopies, setErLabelSetCopies] = useState("1");
   const labelTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1255,9 +1261,10 @@ export default function App() {
   const syrupLabelPrintList = selectedSyrupLabels.length > 0 ? selectedSyrupLabels : [syrupLabelName];
   const erLabelName = erLabelCustomDrug.trim() || erLabelDrug;
   const erLabelMadeDate = useMemo(() => formatErDate(new Date()), []);
-  const erLabelDiscardDate = useMemo(() => getErDiscardDate(new Date()), []);
+  const erSelectedExpiryMonths = erLabelCustomDrug.trim() ? Number(erLabelCustomExpiryMonths) as 1 | 6 : getErExpiryMonths(erLabelDrug);
+  const erLabelDiscardDate = useMemo(() => getErDiscardDate(new Date(), erSelectedExpiryMonths), [erSelectedExpiryMonths]);
   const erLabelCopies = Math.max(1, Math.floor(clampPositive(erLabelSetCopies, 1)));
-  const erLabelPreviewList = selectedErLabels.length > 0 ? selectedErLabels : (erLabelName ? [{ name: erLabelName, volume: erLabelVolume }] : []);
+  const erLabelPreviewList = selectedErLabels.length > 0 ? selectedErLabels : (erLabelName ? [{ name: erLabelName, volume: erLabelVolume, expiryMonths: erSelectedExpiryMonths }] : []);
   const erPreviewSheets = erLabelPreviewList.map((item) => Array.from({ length: 4 }, () => item));
 
   const addImageLabel = (src: string) => { if (!src) return; setSelectedLabelImages((prev) => [...prev, src]); setTakeImageSelection(""); setStopImageSelection(""); setPictogramImageSelection(""); setPrepImageSelection(""); };
@@ -1273,7 +1280,7 @@ export default function App() {
     const name = erLabelName.trim();
     const volume = erLabelVolume.trim();
     if (!name || !volume) return;
-    setSelectedErLabels((prev) => [...prev, { name, volume }]);
+    setSelectedErLabels((prev) => [...prev, { name, volume, expiryMonths: erSelectedExpiryMonths }]);
     setErLabelCustomDrug("");
     setErLabelVolume("");
   };
@@ -1337,7 +1344,7 @@ export default function App() {
       const cells = group.map((item) => {
         const lines = getErDrugNameLines(item.name);
         const nameHtml = lines.map((line) => "<div>" + line + "</div>").join("");
-        return "<div class=\"er-label-cell\"><div class=\"er-drug-name\">" + nameHtml + "</div><div class=\"er-volume\">" + item.volume + " mL</div><div class=\"er-date-block\"><div>소분일자:</div><div>" + erLabelMadeDate + "</div><div>폐기일자:</div><div>" + erLabelDiscardDate + "</div></div></div>";
+        return "<div class=\"er-label-cell\"><div class=\"er-drug-name\">" + nameHtml + "</div><div class=\"er-volume\">" + item.volume + " mL</div><div class=\"er-date-block\"><div>소분일자:</div><div>" + erLabelMadeDate + "</div><div>폐기일자:</div><div>" + getErDiscardDate(new Date(), item.expiryMonths) + "</div></div></div>";
       }).join("");
       sheets.push("<div class=\"er-label-sheet\"><div class=\"er-label-grid\">" + cells + "</div></div>");
     });
@@ -1422,6 +1429,13 @@ export default function App() {
         <Label>직접 입력</Label>
         <Input value={erLabelCustomDrug} onChange={(e) => setErLabelCustomDrug(e.target.value)} placeholder="직접 입력 시 우선 적용" />
       </div>
+      {erLabelCustomDrug.trim() && <div>
+        <Label>유효기간</Label>
+        <select value={erLabelCustomExpiryMonths} onChange={(e) => setErLabelCustomExpiryMonths(e.target.value as "1" | "6")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          <option value="1">1개월</option>
+          <option value="6">6개월</option>
+        </select>
+      </div>}
       <div>
         <Label>총량</Label>
         <div className="relative">
@@ -1455,7 +1469,7 @@ export default function App() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {erPreviewSheets.map((cells, sheetIndex) => <div key={sheetIndex} className="mx-auto overflow-hidden bg-white shadow-sm ring-1 ring-[#d9cfc2]" style={{ width: "90mm", height: "50mm", paddingTop: "6mm", paddingLeft: "7mm", boxSizing: "border-box" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 19mm)", gridTemplateRows: "29mm", width: "76mm", height: "29mm", borderTop: "0.35mm solid #000", borderLeft: "0.35mm solid #000" }}>
-            {cells.map((item, index) => <div key={item.name + index} style={{ width: "19mm", height: "29mm", boxSizing: "border-box", borderRight: "0.35mm solid #000", borderBottom: "0.35mm solid #000", overflow: "hidden", padding: "1.1mm 1mm 0.7mm 1mm", textAlign: "center", color: "#000", fontWeight: 700 }}><div style={{ height: "9.2mm", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: "3.4mm", lineHeight: 1.1, letterSpacing: "-0.3mm", wordBreak: "keep-all" }}>{getErDrugNameLines(item.name).slice(0, 2).map((line, lineIndex) => <div key={lineIndex}>{line}</div>)}</div><div style={{ height: "5.2mm", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.8mm", lineHeight: 1, fontWeight: 800 }}>{item.volume || ""} mL</div><div style={{ marginTop: "1.8mm", textAlign: "left", fontSize: "2.35mm", lineHeight: 1.18, fontWeight: 600, letterSpacing: "-0.1mm" }}><div>소분일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelMadeDate}</div><div>폐기일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelDiscardDate}</div></div></div>)}
+            {cells.map((item, index) => <div key={item.name + index} style={{ width: "19mm", height: "29mm", boxSizing: "border-box", borderRight: "0.35mm solid #000", borderBottom: "0.35mm solid #000", overflow: "hidden", padding: "1.1mm 1mm 0.7mm 1mm", textAlign: "center", color: "#000", fontWeight: 700 }}><div style={{ height: "9.2mm", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: "3.4mm", lineHeight: 1.1, letterSpacing: "-0.3mm", wordBreak: "keep-all" }}>{getErDrugNameLines(item.name).slice(0, 2).map((line, lineIndex) => <div key={lineIndex}>{line}</div>)}</div><div style={{ height: "5.2mm", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.8mm", lineHeight: 1, fontWeight: 800 }}>{item.volume || ""} mL</div><div style={{ marginTop: "1.8mm", textAlign: "left", fontSize: "2.35mm", lineHeight: 1.18, fontWeight: 600, letterSpacing: "-0.1mm" }}><div>소분일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelMadeDate}</div><div>폐기일자:</div><div style={{ paddingLeft: "2mm" }}>{getErDiscardDate(new Date(), item.expiryMonths)}</div></div></div>)}
           </div>
         </div>)}
       </div>
