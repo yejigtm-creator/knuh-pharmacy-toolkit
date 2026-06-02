@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { PDFDocument } from "pdf-lib";
 
 type TabKey = "split" | "syrup" | "label" | "education";
 type EducationMode = "inhaler" | "warfarin" | "colonoscopy";
@@ -138,7 +139,7 @@ const ER_LABEL_PRESETS = [
 const ER_ONE_MONTH_DRUGS = ["세토펜 현탁액", "어린이 부루펜 시럽", "푸로스판 시럽"];
 
 const EDUCATION_DRUGS: Record<EducationMode, string[]> = {
-  inhaler: ["렐바 100 엘립타", "바헬바 레스피맷", "스피리바 레스피맷", "심비코트 라피헬러", "아노로 62.5 엘립타", "트렐리지 엘립타", "포스터 100 HFA", "포스터 200 HFA"].sort((a, b) => a.localeCompare(b, "ko")),
+  inhaler: ["렐바 100 엘립타", "바헬바 레스피맷", "스피리바 레스피맷", "심비코트 라피헬러", "아노로 62.5 엘립타", "트림보우", "트렐리지 엘립타", "포스터 100 HFA", "포스터 200 HFA"].sort((a, b) => a.localeCompare(b, "ko")),
   warfarin: ["와파린 2mg", "와파린 5mg", "와파린 2mg, 5mg"],
   colonoscopy: ["오라팡", "쿨프렙", "플렌뷰", "피코라이트"].sort((a, b) => a.localeCompare(b, "ko")),
 };
@@ -156,6 +157,7 @@ const PATIENT_EDUCATION_PDFS: Record<EducationMode, PatientEducationItem[]> = {
     { id: "inhaler-spiriva", drugName: "스피리바 레스피맷", fileName: "스피리바 레스피맷.pdf", pdfData: "/patient-education/inhaler/스피리바 레스피맷.pdf" },
     { id: "inhaler-symbicort", drugName: "심비코트 라피헬러", fileName: "심비코트 라피헬러.pdf", pdfData: "/patient-education/inhaler/심비코트 라피헬러.pdf" },
     { id: "inhaler-anoro", drugName: "아노로 62.5 엘립타", fileName: "아노로 62.5 엘립타.pdf", pdfData: "/patient-education/inhaler/아노로 62.5 엘립타.pdf" },
+    { id: "inhaler-trimbow", drugName: "트림보우", fileName: "트림보우.pdf", pdfData: "/patient-education/inhaler/트림보우.pdf" },
     { id: "inhaler-trelegy", drugName: "트렐리지 엘립타", fileName: "트렐리지 엘립타.pdf", pdfData: "/patient-education/inhaler/트렐리지 엘립타.pdf" },
     { id: "inhaler-foster100", drugName: "포스터 100 HFA", fileName: "포스터 100 HFA.pdf", pdfData: "/patient-education/inhaler/포스터 100 HFA.pdf" },
     { id: "inhaler-foster200", drugName: "포스터 200 HFA", fileName: "포스터 200 HFA.pdf", pdfData: "/patient-education/inhaler/포스터 200 HFA.pdf" },
@@ -1274,6 +1276,7 @@ export default function App() {
   const [selectedErLabels, setSelectedErLabels] = useState<ErLabelItem[]>([]);
   const [erLabelSetCopies, setErLabelSetCopies] = useState("1");
   const labelTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
   const resetMgInputs = () => {
     setStrength("");
@@ -1287,6 +1290,10 @@ export default function App() {
     setPacks("");
     setPracticalPackLimit("15");
   };
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     setSavedLabels(loadSavedLabels());
@@ -1368,17 +1375,50 @@ export default function App() {
   };
   const removeEducationPdfAt = (index: number) => setSelectedEducationPdfs((prev) => prev.filter((_, i) => i !== index));
   const clearSelectedEducationPdfs = () => setSelectedEducationPdfs([]);
-  const printEducationPdf = () => {
-    const repeated = Array.from({ length: educationCopies }, () => educationPrintList).flat().filter((item) => item.pdfData);
+  const printEducationPdf = async () => {
+    const repeated = Array.from({ length: educationCopies }, () => educationPrintList)
+      .flat()
+      .filter((item) => item.pdfData);
+
     if (repeated.length === 0) return;
-    repeated.forEach((item, index) => {
+
+    try {
+      const mergedPdf = await PDFDocument.create();
+
+      for (const item of repeated) {
+        const existingPdfBytes = await fetch(item.pdfData).then((res) => {
+          if (!res.ok) throw new Error(`PDF 파일을 불러오지 못했습니다: ${item.fileName}`);
+          return res.arrayBuffer();
+        });
+
+        const srcPdf = await PDFDocument.load(existingPdfBytes);
+        const copiedPages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
+        copiedPages.forEach((page) => mergedPdf.addPage(page));
+      }
+
+      const mergedPdfBytes = await mergedPdf.save();
+      const arrayBuffer = new ArrayBuffer(mergedPdfBytes.byteLength);
+      const uint8Array = new Uint8Array(arrayBuffer);
+      uint8Array.set(mergedPdfBytes);
+      const blob = new Blob([arrayBuffer], { type: "application/pdf" });
+      const blobUrl = URL.createObjectURL(blob);
+      const printWindow = window.open(blobUrl, "_blank");
+
+      if (!printWindow) {
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
       setTimeout(() => {
-        const printWindow = window.open(item.pdfData, "_blank");
-        if (!printWindow) return;
         printWindow.focus();
-        setTimeout(() => printWindow.print(), 700);
-      }, index * 900);
-    });
+        printWindow.print();
+      }, 800);
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (error) {
+      console.error(error);
+      alert("복약안내문 PDF 출력 준비 중 오류가 발생했습니다.");
+    }
   };
   const toggleFavorite = (src: string) => {
     setFavoriteImages((prev) => { const next = prev.includes(src) ? prev.filter((item) => item !== src) : [src, ...prev]; if (typeof window !== "undefined") window.localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(next)); return next; });
@@ -1450,6 +1490,8 @@ export default function App() {
   };
 
   const symbolButtons = ["☆", "★", "○", "-", "·", "＊", "※", "→", "▶", "경고"];
+
+  if (!isClient) return null;
 
   return (
     <div className="min-h-screen bg-[#e9e0d2] px-6 py-10 text-[#302b26]">
