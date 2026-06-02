@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-type TabKey = "split" | "syrup" | "label";
+type TabKey = "split" | "syrup" | "label" | "education";
+type EducationMode = "inhaler" | "warfarin" | "colonoscopy";
 type SplitMode = "mg" | "t";
 type LabelMode = "text" | "image" | "syrup" | "er";
 type ImageCategory = "take" | "stop" | "pictogram" | "prep";
@@ -48,6 +49,7 @@ type LabelImagePreset = {
 
 const LABEL_STORAGE_KEY = "yj-pharmacy-labels-v1";
 const FAVORITE_STORAGE_KEY = "yj-label-favorites";
+const EDUCATION_STORAGE_KEY = "yj-patient-education-pdfs-v1";
 const IMAGE_ASSET_VERSION = "20260421-2";
 
 const HTML_LABEL_VENTOLIN = "html:ventolin-neb";
@@ -135,10 +137,51 @@ const ER_LABEL_PRESETS = [
 
 const ER_ONE_MONTH_DRUGS = ["세토펜 현탁액", "어린이 부루펜 시럽", "푸로스판 시럽"];
 
+const EDUCATION_DRUGS: Record<EducationMode, string[]> = {
+  inhaler: ["렐바 100 엘립타", "바헬바 레스피맷", "스피리바 레스피맷", "심비코트 라피헬러", "아노로 62.5 엘립타", "트렐리지 엘립타", "포스터 100 HFA", "포스터 200 HFA"].sort((a, b) => a.localeCompare(b, "ko")),
+  warfarin: ["와파린"],
+  colonoscopy: ["오라팡", "쿨프렙", "플렌뷰", "피코라이트"].sort((a, b) => a.localeCompare(b, "ko")),
+};
+
+const EDUCATION_LABELS: Record<EducationMode, string> = {
+  inhaler: "흡입기",
+  warfarin: "와파린",
+  colonoscopy: "대장내시경",
+};
+
+const PATIENT_EDUCATION_PDFS: Record<EducationMode, PatientEducationItem[]> = {
+  inhaler: [
+    { id: "inhaler-relvar100", drugName: "렐바 100 엘립타", fileName: "렐바 100 엘립타.pdf", pdfData: "/patient-education/inhaler/렐바 100 엘립타.pdf" },
+    { id: "inhaler-bahelva", drugName: "바헬바 레스피맷", fileName: "바헬바 레스피맷.pdf", pdfData: "/patient-education/inhaler/바헬바 레스피맷.pdf" },
+    { id: "inhaler-spiriva", drugName: "스피리바 레스피맷", fileName: "스피리바 레스피맷.pdf", pdfData: "/patient-education/inhaler/스피리바 레스피맷.pdf" },
+    { id: "inhaler-symbicort", drugName: "심비코트 라피헬러", fileName: "심비코트 라피헬러.pdf", pdfData: "/patient-education/inhaler/심비코트 라피헬러.pdf" },
+    { id: "inhaler-anoro", drugName: "아노로 62.5 엘립타", fileName: "아노로 62.5 엘립타.pdf", pdfData: "/patient-education/inhaler/아노로 62.5 엘립타.pdf" },
+    { id: "inhaler-trelegy", drugName: "트렐리지 엘립타", fileName: "트렐리지 엘립타.pdf", pdfData: "/patient-education/inhaler/트렐리지 엘립타.pdf" },
+    { id: "inhaler-foster100", drugName: "포스터 100 HFA", fileName: "포스터 100 HFA.pdf", pdfData: "/patient-education/inhaler/포스터 100 HFA.pdf" },
+    { id: "inhaler-foster200", drugName: "포스터 200 HFA", fileName: "포스터 200 HFA.pdf", pdfData: "/patient-education/inhaler/포스터 200 HFA.pdf" },
+  ].sort((a, b) => a.drugName.localeCompare(b.drugName, "ko")),
+  warfarin: [
+    { id: "warfarin-basic", drugName: "와파린", fileName: "PDF 미등록", pdfData: "" },
+  ],
+  colonoscopy: [
+    { id: "colonoscopy-orapang", drugName: "오라팡", fileName: "PDF 미등록", pdfData: "" },
+    { id: "colonoscopy-coolprep", drugName: "쿨프렙", fileName: "PDF 미등록", pdfData: "" },
+    { id: "colonoscopy-plenvu", drugName: "플렌뷰", fileName: "PDF 미등록", pdfData: "" },
+    { id: "colonoscopy-picolight", drugName: "피코라이트", fileName: "PDF 미등록", pdfData: "" },
+  ],
+};
+
 type ErLabelItem = {
   name: string;
   volume: string;
   expiryMonths: 1 | 6;
+};
+
+type PatientEducationItem = {
+  id: string;
+  drugName: string;
+  fileName: string;
+  pdfData: string;
 };
 
 const getSyrupExpiryDate = (baseDate = new Date()): string => {
@@ -1143,6 +1186,21 @@ const saveSavedLabels = (labels: SavedLabel[]): void => {
   if (typeof window !== "undefined") window.localStorage.setItem(LABEL_STORAGE_KEY, JSON.stringify(labels));
 };
 
+const loadPatientEducation = (): Record<EducationMode, PatientEducationItem[]> => {
+  const empty = { inhaler: [], warfarin: [], colonoscopy: [] } as Record<EducationMode, PatientEducationItem[]>;
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = window.localStorage.getItem(EDUCATION_STORAGE_KEY);
+    return raw ? { ...empty, ...JSON.parse(raw) } : empty;
+  } catch {
+    return empty;
+  }
+};
+
+const savePatientEducation = (items: Record<EducationMode, PatientEducationItem[]>): void => {
+  if (typeof window !== "undefined") window.localStorage.setItem(EDUCATION_STORAGE_KEY, JSON.stringify(items));
+};
+
 const runSelfTests = (): void => {
   console.assert(calculateResult(75, 22, 4)?.totalTabs === 1.17, "mg totalTabs test");
   console.assert(calculateResult(100, 25, 2)?.totalTabs === 0.5, "mg half tab test");
@@ -1180,6 +1238,11 @@ export default function App() {
   const [selectedSyrup, setSelectedSyrup] = useState(SORTED_SYRUP_DRUGS[0]?.name ?? "");
   const [syrupMl, setSyrupMl] = useState("");
   const [labelMode, setLabelMode] = useState<LabelMode>("text");
+  const [educationMode, setEducationMode] = useState<EducationMode>("inhaler");
+  const [educationDrug, setEducationDrug] = useState("");
+  const [selectedEducationId, setSelectedEducationId] = useState("");
+  const [selectedEducationPdfs, setSelectedEducationPdfs] = useState<PatientEducationItem[]>([]);
+  const [educationSetCopies, setEducationSetCopies] = useState("1");
   const [templateName, setTemplateName] = useState("");
   const [labelContent, setLabelContent] = useState("");
   const [fontSize, setFontSize] = useState("30");
@@ -1266,6 +1329,10 @@ export default function App() {
   const erLabelCopies = Math.max(1, Math.floor(clampPositive(erLabelSetCopies, 1)));
   const erLabelPreviewList = selectedErLabels.length > 0 ? selectedErLabels : (erLabelName ? [{ name: erLabelName, volume: erLabelVolume, expiryMonths: erSelectedExpiryMonths }] : []);
   const erPreviewSheets = erLabelPreviewList.map((item) => Array.from({ length: 4 }, () => item));
+  const currentEducationItems = PATIENT_EDUCATION_PDFS[educationMode] ?? [];
+  const currentEducationPdf = currentEducationItems.find((item) => item.id === selectedEducationId) ?? currentEducationItems.find((item) => item.drugName === educationDrug);
+  const educationCopies = Math.max(1, Math.floor(clampPositive(educationSetCopies, 1)));
+  const educationPrintList = selectedEducationPdfs;
 
   const addImageLabel = (src: string) => { if (!src) return; setSelectedLabelImages((prev) => [...prev, src]); setTakeImageSelection(""); setStopImageSelection(""); setPictogramImageSelection(""); setPrepImageSelection(""); };
   const addSyrupLabel = () => {
@@ -1286,6 +1353,31 @@ export default function App() {
   };
   const removeErLabelAt = (index: number) => setSelectedErLabels((prev) => prev.filter((_, i) => i !== index));
   const clearSelectedErLabels = () => setSelectedErLabels([]);
+  const handleEducationModeChange = (mode: EducationMode) => {
+    setEducationMode(mode);
+    setEducationDrug("");
+    setSelectedEducationId("");
+    setSelectedEducationPdfs([]);
+    setEducationSetCopies("1");
+  };
+  const addEducationPdf = () => {
+    if (!educationDrug || !currentEducationPdf) return;
+    setSelectedEducationPdfs((prev) => prev.some((item) => item.id === currentEducationPdf.id) ? prev : [...prev, currentEducationPdf]);
+  };
+  const removeEducationPdfAt = (index: number) => setSelectedEducationPdfs((prev) => prev.filter((_, i) => i !== index));
+  const clearSelectedEducationPdfs = () => setSelectedEducationPdfs([]);
+  const printEducationPdf = () => {
+    const repeated = Array.from({ length: educationCopies }, () => educationPrintList).flat().filter((item) => item.pdfData);
+    if (repeated.length === 0) return;
+    repeated.forEach((item, index) => {
+      setTimeout(() => {
+        const printWindow = window.open(item.pdfData, "_blank");
+        if (!printWindow) return;
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 700);
+      }, index * 900);
+    });
+  };
   const toggleFavorite = (src: string) => {
     setFavoriteImages((prev) => { const next = prev.includes(src) ? prev.filter((item) => item !== src) : [src, ...prev]; if (typeof window !== "undefined") window.localStorage.setItem(FAVORITE_STORAGE_KEY, JSON.stringify(next)); return next; });
   };
@@ -1362,7 +1454,7 @@ export default function App() {
       <style>{`${HTML_LABEL_STYLE} html { overflow-y: scroll; scrollbar-gutter: stable; } button:not(:disabled), select, input[type="button"], input[type="submit"], input[type="reset"] { cursor: pointer; } button:disabled { cursor: not-allowed; }`}</style>
       <div className="mx-auto max-w-6xl space-y-8">
         <header className="space-y-3"><div className="text-xs tracking-[0.32em] text-[#8a8175]">KNUH PHARMACY TOOLKIT</div><div className="flex items-end gap-3"><h1 className="border-l-4 border-[#7A816C] pl-3 text-3xl font-bold text-[#302b26]">약제과 업무지원 도구</h1><span className="text-sm text-[#8a8175]">· 산제조제</span></div><div className="text-xs tracking-[0.18em] text-[#8a8175]">pharmacy utility series · YJ · v1.0</div></header>
-        <nav className="flex flex-wrap gap-4"><TabButton active={tab === "split"} label="분할조제 계산" onClick={() => setTab("split")} /><TabButton active={tab === "syrup"} label="건조시럽 조제" onClick={() => setTab("syrup")} /><TabButton active={tab === "label"} label="라벨 제작" onClick={() => setTab("label")} /></nav>
+        <nav className="flex flex-wrap gap-4"><TabButton active={tab === "split"} label="분할조제 계산" onClick={() => setTab("split")} /><TabButton active={tab === "syrup"} label="건조시럽 조제" onClick={() => setTab("syrup")} /><TabButton active={tab === "label"} label="라벨 제작" onClick={() => setTab("label")} /><TabButton active={tab === "education"} label="복약안내문" onClick={() => setTab("education")} /></nav>
 
         {tab === "split" && <div className="space-y-6"><SectionCard title="분할조제 계산" description="mg 또는 T 단위 처방 기준으로 몇 정을 몇 포로 나눌지 계산"><div className="space-y-5"><div className="flex items-center justify-between gap-3">
   <div className="flex flex-wrap items-center gap-3">
@@ -1379,6 +1471,26 @@ export default function App() {
 </div><div className="grid gap-4 md:grid-cols-4">{splitMode === "mg" && <div><Label>약 1정 함량</Label><Input value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="mg/tab" /></div>}<div><Label>{splitMode === "mg" ? "처방 1회 용량" : "처방 1회 용량(T)"}</Label><Input value={dose} onChange={(e) => setDose(e.target.value)} placeholder={splitMode === "mg" ? "mg" : "T"} /></div><div><Label>나눌 포 수</Label><Input value={packs} onChange={(e) => setPacks(e.target.value)} placeholder="포" /></div>{splitMode === "t" && <div><Label>실무추천 포수 제한</Label><select value={practicalPackLimit} onChange={(e) => setPracticalPackLimit(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="10">10포 이하</option><option value="12">12포 이하</option><option value="15">15포 이하</option><option value="none">제한 없음</option></select></div>}</div><div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">{splitMode === "mg" ? "계산식: (처방용량 × 포수) ÷ 1정 함량" : "계산식: 처방 T × 포수 = 필요한 총 정수"}</div>{splitMode === "t" && <div className="rounded-xl bg-[#e9f0e6] p-3 text-sm text-[#4b5a3f]">T 기준 추천은 1~3순위는 실무추천, 마지막 항목은 정확도 우선값으로 표시됩니다.</div>}</div></SectionCard><Card className="rounded-3xl border border-[#e5dccf] bg-[#f8f4ed]"><CardContent className="grid min-h-[96px] items-center gap-6 p-6 md:grid-cols-3"><ResultBox label="필요한 총 정수" value={result ? `${result.totalTabs} T` : "-"} />{splitMode === "mg" && <ResultBox label="1포당 실제 함량" value={result ? `${result.perPack} mg` : "-"} />}<ResultBox label="정수 비율" value={result ? `${result.ratio} T` : "-"} /></CardContent></Card><Card className="rounded-3xl border border-[#e5dccf] bg-[#f8f4ed]"><CardHeader><CardTitle className="text-xl text-[#3e372f]">추천 포 수</CardTitle></CardHeader><CardContent><div className="grid gap-3 md:grid-cols-4">{recs.length > 0 ? recs.map((r, i) => <button key={`${r.packs}-${r.tabs}-${i}`} type="button" onClick={() => setPacks(String(r.packs))} className={`rounded-3xl border px-4 py-4 text-center ${i === 0 ? "bg-[#7A816C] text-white" : "bg-[#f7f2ec] text-[#6b6156]"}`}><div className="text-lg font-bold">{i === 0 ? "⭐ " : ""}{r.packs}포 ({r.tabs}T)</div><div className={`mt-1 text-xs ${i === 0 ? "text-white/85" : "text-[#8a8175]"}`}>{r.precisionLabel}{r.kind === "accuracy" && <span className="ml-1">(정확도 우선)</span>}</div><div className={`mt-1 text-[11px] ${i === 0 ? "text-white/75" : "text-[#9a9083]"}`}>{r.reason}</div></button>) : <div className="text-sm text-[#8a8175]">값을 입력하면 추천 포수가 표시됩니다.</div>}</div></CardContent></Card></div>}
 
         {tab === "syrup" && <div className="space-y-6"><SectionCard title="건조시럽 조제"><div className="space-y-5"><div className="grid gap-4 md:grid-cols-2"><div><Label>약품 선택</Label><select value={selectedSyrup} onChange={(e) => setSelectedSyrup(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">{SORTED_SYRUP_DRUGS.map((drug) => <option key={drug.name} value={drug.name}>{drug.name}</option>)}</select></div><div><Label>제조할 최종 용량</Label><Input value={syrupMl} onChange={(e) => setSyrupMl(e.target.value)} placeholder="mL" /></div></div>{syrupInfo && <div className={`rounded-xl p-4 text-base font-semibold ${syrupInfo.storage === "냉장" ? "bg-[#e3ebe6] text-[#4b5a3f]" : "bg-[#efe3e6] text-[#6a4b4f]"}`}>{syrupInfo.storage === "냉장" ? "❄️ " : "🏠 "}조제 후 {syrupInfo.storage} 보관 / 유효기간 {syrupInfo.duration}</div>}<div className="rounded-xl bg-[#ede6da] p-3 text-sm text-[#6f665a]">계산식: 약품별 g/mL × 제조할 mL = 필요한 분말량(g)</div></div></SectionCard><Card className="rounded-3xl border border-[#e5dccf] bg-[#f8f4ed]"><CardContent className="p-6"><ResultBox label="필요한 분말량" value={syrupAmount > 0 ? `${syrupAmount} g` : "-"} /></CardContent></Card></div>}
+
+        {tab === "education" && <div className="space-y-6"><SectionCard title="복약안내문"><div className="space-y-5"><div className="flex flex-wrap gap-3"><PebbleButton onClick={() => handleEducationModeChange("inhaler")} variant={educationMode === "inhaler" ? "sage" : "light"}>흡입기</PebbleButton><PebbleButton onClick={() => handleEducationModeChange("warfarin")} variant={educationMode === "warfarin" ? "sage" : "light"}>와파린</PebbleButton><PebbleButton onClick={() => handleEducationModeChange("colonoscopy")} variant={educationMode === "colonoscopy" ? "sage" : "light"}>대장내시경</PebbleButton></div><div className="grid gap-4 md:grid-cols-[1fr_auto_auto]"><div><Label>약품 선택</Label><select value={educationDrug} onChange={(e) => { setEducationDrug(e.target.value); setSelectedEducationId(""); }} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">선택하세요</option>{EDUCATION_DRUGS[educationMode].map((name) => <option key={name} value={name}>{name}</option>)}</select></div><div className="flex items-end"><PebbleButton onClick={addEducationPdf} variant="sage" className="h-10 px-5 py-0 text-sm flex items-center justify-center leading-none">목록 추가</PebbleButton></div><div className="flex items-end"><PebbleButton onClick={printEducationPdf} variant="sage" className="h-10 px-5 py-0 text-sm flex items-center justify-center leading-none">안내문 출력</PebbleButton></div></div><div><div className="mb-2 flex items-center justify-between"><Label>선택된 복약안내문</Label>{selectedEducationPdfs.length > 0 && <button type="button" onClick={clearSelectedEducationPdfs} className="text-sm text-[#8a8175] underline underline-offset-2">전체 비우기</button>}</div><div className="rounded-2xl border border-input bg-background p-4">{educationPrintList.length > 0 ? <div className="grid gap-2 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">{educationPrintList.map((item, index) => <div key={item.id + index} className="rounded-xl border border-[#e5dccf] bg-white px-3 py-2 text-sm text-[#5f574d]"><div className="font-semibold text-[#3e372f]">{item.drugName}</div><div className="mt-2 flex justify-between text-xs text-[#8a8175]"><span>{index + 1}번 안내문</span>{selectedEducationPdfs.length > 0 && <button type="button" onClick={() => removeEducationPdfAt(index)} className="underline underline-offset-2">제거</button>}</div></div>)}</div> : <div className="flex min-h-[120px] items-center justify-center text-sm text-[#8a8175]">약품을 선택한 뒤 목록 추가를 누르세요.</div>}</div></div><div className="space-y-2">
+  <Label>출력 세트 수</Label>
+
+  <div className="grid gap-4 md:grid-cols-[240px_1fr] items-start">
+    <Input
+      value={educationSetCopies}
+      onChange={(e) =>
+        setEducationSetCopies(
+          e.target.value.replace(/[^0-9]/g, "")
+        )
+      }
+      placeholder="1"
+    />
+
+    <div className="self-start rounded-2xl border border-[#d7e3d2] bg-[#E6EEE5] px-4 py-1.5 text-sm font-semibold text-[#4b5a3f] whitespace-nowrap">
+      이 안내문은 앞뒤 2페이지 구성입니다. 프린터 설정에서 양면 인쇄를 선택해 주세요.
+    </div>
+  </div>
+</div><div className="text-xs text-[#8a8175]">출력 세트 수 {educationCopies}회 · PDF 원본 그대로 새 창에서 순서대로 출력됩니다.</div></div></SectionCard></div>}
 
         {tab === "label" && <div className="space-y-6"><SectionCard title="라벨 제작"><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-3"><PebbleButton onClick={() => setLabelMode("text")} variant={labelMode === "text" ? "sage" : "light"}>텍스트 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("image")} variant={labelMode === "image" ? "sage" : "light"}>프리셋 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("syrup")} variant={labelMode === "syrup" ? "sage" : "light"}>시럽 라벨</PebbleButton><PebbleButton onClick={() => setLabelMode("er")} variant={labelMode === "er" ? "sage" : "light"}>응급실 라벨</PebbleButton></div>{labelMode === "image" && <div className="space-y-4">{favoriteImages.length > 0 && <div className="rounded-2xl border border-[#e5dccf] bg-white p-4"><div className="mb-3 flex items-center justify-between"><div className="text-sm font-semibold text-[#6e665b]">즐겨찾기</div><div className="text-xs text-[#8a8175]">★ 버튼으로 추가/해제</div></div><div className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">{favoriteImages.map((src) => LABEL_IMAGE_PRESETS.find((item) => item.src === src)).filter((item): item is LabelImagePreset => Boolean(item)).map((item) => <button key={`favorite-${item.key}`} type="button" onClick={() => addImageLabel(item.src)} className="flex items-center justify-between rounded-xl border border-[#e5dccf] bg-[#f8f4ed] px-3 py-2 text-left text-sm text-[#5f574d] hover:bg-[#f1eadf]"><span className="truncate pr-2">{item.label}</span><span className="text-[#b08b2e]">★</span></button>)}</div></div>}<div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">{([["복용 라벨", takeImageSelection, setTakeImageSelection, imagePresetsByCategory.take, "복용 라벨 선택"], ["복용 중단 라벨", stopImageSelection, setStopImageSelection, imagePresetsByCategory.stop, "복용 중단 라벨 선택"], ["약종류 라벨", pictogramImageSelection, setPictogramImageSelection, imagePresetsByCategory.pictogram, "약종류 라벨 선택"], ["조제방법 라벨", prepImageSelection, setPrepImageSelection, imagePresetsByCategory.prep, "조제방법 라벨 선택"]] as const).map(([title, value, setter, items, placeholder]) => <div key={title}><Label>{title}</Label><select value={value} onChange={(e) => { setter(e.target.value); addImageLabel(e.target.value); }} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">{placeholder}</option>{items.map((item) => <option key={item.key} value={item.src}>{item.label}</option>)}</select></div>)}</div><div className="mt-2 text-xs text-[#8a8175]">라벨을 선택하면 목록에 추가되고, 선택한 순서대로 출력됩니다.</div><div><div className="mb-2 flex items-center justify-between"><Label>선택된 프리셋 라벨 목록</Label>{selectedLabelImages.length > 0 && <button type="button" onClick={clearSelectedImages} className="text-sm text-[#8a8175] underline underline-offset-2">전체 비우기</button>}</div><div className="rounded-2xl border border-input bg-background p-4">{selectedLabelImages.length > 0 ? <div className="grid grid-cols-4 gap-3 auto-rows-fr">{selectedLabelImages.map((src, index) => <div key={`${src}-${index}`} className="rounded-xl border border-[#e5dccf] bg-white p-3"><div className="relative">{isHtmlLabel(src) ? <div className="relative mx-auto overflow-hidden rounded bg-white" style={{ width: "100%", aspectRatio: `${printConfig.width} / ${printConfig.height}` }}><div className="absolute left-1/2 top-1/2 overflow-hidden bg-white" style={{ width: `${printConfig.width}mm`, height: `${printConfig.height}mm`, transform: "translate(-50%, -50%) scale(0.55)", transformOrigin: "center center" }}>{renderHtmlLabel(src)}</div></div> : <img src={versionedSrc(src)} alt={`선택된 라벨 ${index + 1}`} className="mx-auto h-full max-h-[120px] w-full object-contain" />}<button type="button" onClick={() => toggleFavorite(src)} className="absolute top-1 right-1 rounded bg-white/80 px-1 text-xs">★</button></div><div className="mt-2 flex items-center justify-between gap-2 text-sm text-[#6e665b]"><span>{index + 1}번 라벨</span><div className="flex items-center gap-2"><button type="button" onClick={() => moveSelectedImage(index, "up")} disabled={index === 0} className="text-[#8a8175] underline underline-offset-2 disabled:no-underline disabled:opacity-40">↑</button><button type="button" onClick={() => moveSelectedImage(index, "down")} disabled={index === selectedLabelImages.length - 1} className="text-[#8a8175] underline underline-offset-2 disabled:no-underline disabled:opacity-40">↓</button><button type="button" onClick={() => removeSelectedImageAt(index)} className="text-[#8a8175] underline underline-offset-2">제거</button></div></div></div>)}</div> : <div className="flex min-h-[220px] items-center justify-center text-sm text-[#8a8175]">드롭박스에서 프리셋 라벨을 선택하세요</div>}</div></div></div>}{labelMode === "syrup" && (
   <div className="space-y-5">
