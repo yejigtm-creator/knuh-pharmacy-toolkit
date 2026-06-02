@@ -139,7 +139,7 @@ const ER_ONE_MONTH_DRUGS = ["세토펜 현탁액", "어린이 부루펜 시럽",
 
 const EDUCATION_DRUGS: Record<EducationMode, string[]> = {
   inhaler: ["렐바 100 엘립타", "바헬바 레스피맷", "스피리바 레스피맷", "심비코트 라피헬러", "아노로 62.5 엘립타", "트렐리지 엘립타", "포스터 100 HFA", "포스터 200 HFA"].sort((a, b) => a.localeCompare(b, "ko")),
-  warfarin: ["와파린"],
+  warfarin: ["와파린 2mg", "와파린 5mg", "와파린 2mg, 5mg"],
   colonoscopy: ["오라팡", "쿨프렙", "플렌뷰", "피코라이트"].sort((a, b) => a.localeCompare(b, "ko")),
 };
 
@@ -161,7 +161,9 @@ const PATIENT_EDUCATION_PDFS: Record<EducationMode, PatientEducationItem[]> = {
     { id: "inhaler-foster200", drugName: "포스터 200 HFA", fileName: "포스터 200 HFA.pdf", pdfData: "/patient-education/inhaler/포스터 200 HFA.pdf" },
   ].sort((a, b) => a.drugName.localeCompare(b.drugName, "ko")),
   warfarin: [
-    { id: "warfarin-basic", drugName: "와파린", fileName: "PDF 미등록", pdfData: "" },
+    { id: "warfarin-2mg", drugName: "와파린 2mg", fileName: "와파린 2mg.pdf", pdfData: "/patient-education/warfarin/와파린 2mg.pdf" },
+    { id: "warfarin-5mg", drugName: "와파린 5mg", fileName: "와파린 5mg.pdf", pdfData: "/patient-education/warfarin/와파린 5mg.pdf" },
+    { id: "warfarin-2mg-5mg", drugName: "와파린 2mg, 5mg", fileName: "와파린 2mg, 5mg.pdf", pdfData: "/patient-education/warfarin/와파린 2mg, 5mg.pdf" },
   ],
   colonoscopy: [
     { id: "colonoscopy-orapang", drugName: "오라팡", fileName: "PDF 미등록", pdfData: "" },
