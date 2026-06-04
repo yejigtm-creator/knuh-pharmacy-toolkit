@@ -141,7 +141,7 @@ const ER_ONE_MONTH_DRUGS = ["세토펜 현탁액", "어린이 부루펜 시럽",
 const EDUCATION_DRUGS: Record<EducationMode, string[]> = {
   inhaler: ["렐바 100 엘립타", "바헬바 레스피맷", "스피리바 레스피맷", "심비코트 라피헬러", "아노로 62.5 엘립타", "트림보우", "트렐리지 엘립타", "포스터 100 HFA", "포스터 200 HFA"].sort((a, b) => a.localeCompare(b, "ko")),
   warfarin: ["와파린 2mg", "와파린 5mg", "와파린 2mg, 5mg"],
-  colonoscopy: ["오라팡", "쿨프렙", "플렌뷰", "피코라이트"].sort((a, b) => a.localeCompare(b, "ko")),
+  colonoscopy: ["수클리어산", "오라팡정", "원프렙 1.38산", "플렌뷰산", "피코솔루션액", "하프렙산"].sort((a, b) => a.localeCompare(b, "ko")),
 };
 
 const EDUCATION_LABELS: Record<EducationMode, string> = {
@@ -168,11 +168,13 @@ const PATIENT_EDUCATION_PDFS: Record<EducationMode, PatientEducationItem[]> = {
     { id: "warfarin-2mg-5mg", drugName: "와파린 2mg, 5mg", fileName: "와파린 2mg, 5mg.pdf", pdfData: "/patient-education/warfarin/와파린 2mg, 5mg.pdf" },
   ],
   colonoscopy: [
-    { id: "colonoscopy-orapang", drugName: "오라팡", fileName: "PDF 미등록", pdfData: "" },
-    { id: "colonoscopy-coolprep", drugName: "쿨프렙", fileName: "PDF 미등록", pdfData: "" },
-    { id: "colonoscopy-plenvu", drugName: "플렌뷰", fileName: "PDF 미등록", pdfData: "" },
-    { id: "colonoscopy-picolight", drugName: "피코라이트", fileName: "PDF 미등록", pdfData: "" },
-  ],
+    { id: "colonoscopy-suclear", drugName: "수클리어산", fileName: "수클리어산.pdf", pdfData: "/patient-education/colonoscopy/수클리어산.pdf" },
+    { id: "colonoscopy-orapang", drugName: "오라팡정", fileName: "오라팡정.pdf", pdfData: "/patient-education/colonoscopy/오라팡정.pdf" },
+    { id: "colonoscopy-oneprep", drugName: "원프렙 1.38산", fileName: "원프렙 1.38산.pdf", pdfData: "/patient-education/colonoscopy/원프렙 1.38산.pdf" },
+    { id: "colonoscopy-plenvu", drugName: "플렌뷰산", fileName: "플렌뷰산.pdf", pdfData: "/patient-education/colonoscopy/플렌뷰산.pdf" },
+    { id: "colonoscopy-picosolution", drugName: "피코솔루션액", fileName: "피코솔루션액.pdf", pdfData: "/patient-education/colonoscopy/피코솔루션액.pdf" },
+    { id: "colonoscopy-halfrep", drugName: "하프렙산", fileName: "하프렙산.pdf", pdfData: "/patient-education/colonoscopy/하프렙산.pdf" },
+  ].sort((a, b) => a.drugName.localeCompare(b.drugName, "ko")),
 };
 
 type ErLabelItem = {
