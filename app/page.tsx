@@ -200,7 +200,7 @@ const getSyrupExpiryDate = (baseDate = new Date()): string => {
   return yy + "-" + mm + "-" + dd;
 };
 
-const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 6 ? 2 : 3;
+const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 5 ? 2 : 3;
 
 const formatErDate = (baseDate = new Date()): string => {
   const yyyy = String(baseDate.getFullYear());
