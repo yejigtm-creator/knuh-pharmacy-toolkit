@@ -181,6 +181,7 @@ type ErLabelItem = {
   name: string;
   volume: string;
   expiryMonths: 1 | 6;
+  discardDate: string;
 };
 
 type PatientEducationItem = {
@@ -200,7 +201,7 @@ const getSyrupExpiryDate = (baseDate = new Date()): string => {
   return yy + "-" + mm + "-" + dd;
 };
 
-const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 5 ? 2 : 3;
+const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 6 ? 2 : 3;
 
 const formatErDate = (baseDate = new Date()): string => {
   const yyyy = String(baseDate.getFullYear());
@@ -1275,6 +1276,8 @@ export default function App() {
   const [erLabelCustomDrug, setErLabelCustomDrug] = useState("");
   const [erLabelVolume, setErLabelVolume] = useState("");
   const [erLabelCustomExpiryMonths, setErLabelCustomExpiryMonths] = useState<"1" | "6">("6");
+  const [erLabelCustomDiscardDate, setErLabelCustomDiscardDate] = useState(false);
+  const [erLabelDiscardDateInput, setErLabelDiscardDateInput] = useState("");
   const [selectedErLabels, setSelectedErLabels] = useState<ErLabelItem[]>([]);
   const [erLabelSetCopies, setErLabelSetCopies] = useState("1");
   const labelTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1336,9 +1339,15 @@ export default function App() {
   const erLabelName = erLabelCustomDrug.trim() || erLabelDrug;
   const erLabelMadeDate = useMemo(() => formatErDate(new Date()), []);
   const erSelectedExpiryMonths = erLabelCustomDrug.trim() ? Number(erLabelCustomExpiryMonths) as 1 | 6 : getErExpiryMonths(erLabelDrug);
-  const erLabelDiscardDate = useMemo(() => getErDiscardDate(new Date(), erSelectedExpiryMonths), [erSelectedExpiryMonths]);
+  const erAutoDiscardDate = useMemo(() => getErDiscardDate(new Date(), erSelectedExpiryMonths), [erSelectedExpiryMonths]);
+  useEffect(() => {
+    if (!erLabelCustomDiscardDate) {
+      setErLabelDiscardDateInput(erAutoDiscardDate);
+    }
+  }, [erAutoDiscardDate, erLabelCustomDiscardDate]);
+  const erLabelDiscardDate = erLabelDiscardDateInput || erAutoDiscardDate;
   const erLabelCopies = Math.max(1, Math.floor(clampPositive(erLabelSetCopies, 1)));
-  const erLabelPreviewList = selectedErLabels.length > 0 ? selectedErLabels : (erLabelName ? [{ name: erLabelName, volume: erLabelVolume, expiryMonths: erSelectedExpiryMonths }] : []);
+  const erLabelPreviewList = selectedErLabels.length > 0 ? selectedErLabels : (erLabelName ? [{ name: erLabelName, volume: erLabelVolume, expiryMonths: erSelectedExpiryMonths, discardDate: erLabelDiscardDate }] : []);
   const erPreviewSheets = erLabelPreviewList.map((item) => Array.from({ length: 4 }, () => item));
   const currentEducationItems = PATIENT_EDUCATION_PDFS[educationMode] ?? [];
   const currentEducationPdf = currentEducationItems.find((item) => item.id === selectedEducationId) ?? currentEducationItems.find((item) => item.drugName === educationDrug);
@@ -1358,7 +1367,7 @@ export default function App() {
     const name = erLabelName.trim();
     const volume = erLabelVolume.trim();
     if (!name || !volume) return;
-    setSelectedErLabels((prev) => [...prev, { name, volume, expiryMonths: erSelectedExpiryMonths }]);
+    setSelectedErLabels((prev) => [...prev, { name, volume, expiryMonths: erSelectedExpiryMonths, discardDate: erLabelDiscardDate }]);
     setErLabelCustomDrug("");
     setErLabelVolume("");
   };
@@ -1480,7 +1489,7 @@ export default function App() {
       const cells = group.map((item) => {
         const lines = getErDrugNameLines(item.name);
         const nameHtml = lines.map((line) => "<div>" + line + "</div>").join("");
-        return "<div class=\"er-label-cell\"><div class=\"er-drug-name\">" + nameHtml + "</div><div class=\"er-volume\">" + item.volume + " mL</div><div class=\"er-date-block\"><div>소분일자:</div><div>" + erLabelMadeDate + "</div><div>폐기일자:</div><div>" + getErDiscardDate(new Date(), item.expiryMonths) + "</div></div></div>";
+        return "<div class=\"er-label-cell\"><div class=\"er-drug-name\">" + nameHtml + "</div><div class=\"er-volume\">" + item.volume + " mL</div><div class=\"er-date-block\"><div>소분일자:</div><div>" + erLabelMadeDate + "</div><div>폐기일자:</div><div>" + (item.discardDate || getErDiscardDate(new Date(), item.expiryMonths)) + "</div></div></div>";
       }).join("");
       sheets.push("<div class=\"er-label-sheet\"><div class=\"er-label-grid\">" + cells + "</div></div>");
     });
@@ -1576,7 +1585,7 @@ export default function App() {
   </div>
 )}{labelMode === "er" && (
   <div className="space-y-5">
-    <div className="grid gap-4 md:grid-cols-4">
+    <div className="grid gap-4" style={{ gridTemplateColumns: "1.25fr 1.25fr 0.9fr 1fr 0.9fr" }}>
       <div>
         <Label>약품명 선택</Label>
         <select value={erLabelDrug} onChange={(e) => setErLabelDrug(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
@@ -1584,22 +1593,19 @@ export default function App() {
         </select>
       </div>
       <div>
-        <Label>직접 입력</Label>
+        <Label>약품명 직접 입력</Label>
         <Input value={erLabelCustomDrug} onChange={(e) => setErLabelCustomDrug(e.target.value)} placeholder="직접 입력 시 우선 적용" />
       </div>
-      {erLabelCustomDrug.trim() && <div>
-        <Label>유효기간</Label>
-        <select value={erLabelCustomExpiryMonths} onChange={(e) => setErLabelCustomExpiryMonths(e.target.value as "1" | "6")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-          <option value="1">1개월</option>
-          <option value="6">6개월</option>
-        </select>
-      </div>}
       <div>
         <Label>총량</Label>
         <div className="relative">
           <Input value={erLabelVolume} onChange={(e) => setErLabelVolume(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="숫자만 입력" className="pr-12" />
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#8a8175]">mL</span>
         </div>
+      </div>
+      <div>
+        <Label>폐기일</Label>
+        <Input value={erLabelDiscardDate} onChange={(e) => { setErLabelDiscardDateInput(e.target.value); setErLabelCustomDiscardDate(true); }} />
       </div>
       <div>
         <Label>출력 세트 수</Label>
@@ -1609,7 +1615,7 @@ export default function App() {
 
     <div className="flex flex-wrap gap-2">
       <PebbleButton onClick={addErLabel} variant="sage" className="h-10 px-5 py-0 text-sm flex items-center justify-center leading-none">목록 추가</PebbleButton>
-      <PebbleButton onClick={() => { setErLabelCustomDrug(""); setErLabelVolume(""); }} variant="light" className="h-10 px-4 py-0 text-sm flex items-center justify-center leading-none">입력 초기화</PebbleButton>
+      <PebbleButton onClick={() => { setErLabelCustomDrug(""); setErLabelVolume(""); setErLabelCustomDiscardDate(false); setErLabelDiscardDateInput(""); }} variant="light" className="h-10 px-4 py-0 text-sm flex items-center justify-center leading-none">입력 초기화</PebbleButton>
     </div>
 
     <div>
@@ -1618,7 +1624,7 @@ export default function App() {
         {selectedErLabels.length > 0 && <button type="button" onClick={clearSelectedErLabels} className="text-sm text-[#8a8175] underline underline-offset-2">전체 비우기</button>}
       </div>
       <div className="rounded-2xl border border-input bg-background p-4">
-        {selectedErLabels.length > 0 ? <div className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">{selectedErLabels.map((item, index) => <div key={item.name + index} className="rounded-xl border border-[#e5dccf] bg-white px-3 py-2 text-sm text-[#5f574d]"><div className="font-semibold text-[#3e372f]">{item.name}</div><div className="mt-1 text-xs text-[#8a8175]">{item.volume} mL · {erLabelMadeDate}</div><div className="mt-2 flex justify-between text-xs text-[#8a8175]"><span>{index + 1}번 라벨</span><button type="button" onClick={() => removeErLabelAt(index)} className="underline underline-offset-2">제거</button></div></div>)}</div> : <div className="flex min-h-[80px] items-center justify-center text-sm text-[#8a8175]">약품명과 총량을 입력한 뒤 목록 추가를 누르세요.</div>}
+        {selectedErLabels.length > 0 ? <div className="grid gap-2 grid-cols-2 md:grid-cols-4 xl:grid-cols-6">{selectedErLabels.map((item, index) => <div key={item.name + index} className="rounded-xl border border-[#e5dccf] bg-white px-3 py-2 text-sm text-[#5f574d]"><div className="font-semibold text-[#3e372f]">{item.name}</div><div className="mt-1 text-xs text-[#8a8175]">{item.volume} mL · 폐기 {item.discardDate || getErDiscardDate(new Date(), item.expiryMonths)}</div><div className="mt-2 flex justify-between text-xs text-[#8a8175]"><span>{index + 1}번 라벨</span><button type="button" onClick={() => removeErLabelAt(index)} className="underline underline-offset-2">제거</button></div></div>)}</div> : <div className="flex min-h-[80px] items-center justify-center text-sm text-[#8a8175]">약품명과 총량을 입력한 뒤 목록 추가를 누르세요.</div>}
       </div>
     </div>
 
@@ -1627,7 +1633,7 @@ export default function App() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {erPreviewSheets.map((cells, sheetIndex) => <div key={sheetIndex} className="mx-auto overflow-hidden bg-white shadow-sm ring-1 ring-[#d9cfc2]" style={{ width: "90mm", height: "50mm", paddingTop: "6mm", paddingLeft: "7mm", boxSizing: "border-box" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 19mm)", gridTemplateRows: "29mm", width: "76mm", height: "29mm", borderTop: "0.35mm solid #000", borderLeft: "0.35mm solid #000" }}>
-            {cells.map((item, index) => <div key={item.name + index} style={{ width: "19mm", height: "29mm", boxSizing: "border-box", borderRight: "0.35mm solid #000", borderBottom: "0.35mm solid #000", overflow: "hidden", padding: "1.1mm 1mm 0.7mm 1mm", textAlign: "center", color: "#000", fontWeight: 700 }}><div style={{ height: "9.2mm", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: "3.4mm", lineHeight: 1.1, letterSpacing: "-0.3mm", wordBreak: "keep-all" }}>{getErDrugNameLines(item.name).slice(0, 2).map((line, lineIndex) => <div key={lineIndex}>{line}</div>)}</div><div style={{ height: "5.2mm", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.8mm", lineHeight: 1, fontWeight: 800 }}>{item.volume || ""} mL</div><div style={{ marginTop: "1.8mm", textAlign: "left", fontSize: "2.35mm", lineHeight: 1.18, fontWeight: 600, letterSpacing: "-0.1mm" }}><div>소분일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelMadeDate}</div><div>폐기일자:</div><div style={{ paddingLeft: "2mm" }}>{getErDiscardDate(new Date(), item.expiryMonths)}</div></div></div>)}
+            {cells.map((item, index) => <div key={item.name + index} style={{ width: "19mm", height: "29mm", boxSizing: "border-box", borderRight: "0.35mm solid #000", borderBottom: "0.35mm solid #000", overflow: "hidden", padding: "1.1mm 1mm 0.7mm 1mm", textAlign: "center", color: "#000", fontWeight: 700 }}><div style={{ height: "9.2mm", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: "3.4mm", lineHeight: 1.1, letterSpacing: "-0.3mm", wordBreak: "keep-all" }}>{getErDrugNameLines(item.name).slice(0, 2).map((line, lineIndex) => <div key={lineIndex}>{line}</div>)}</div><div style={{ height: "5.2mm", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3.8mm", lineHeight: 1, fontWeight: 800 }}>{item.volume || ""} mL</div><div style={{ marginTop: "1.8mm", textAlign: "left", fontSize: "2.35mm", lineHeight: 1.18, fontWeight: 600, letterSpacing: "-0.1mm" }}><div>소분일자:</div><div style={{ paddingLeft: "2mm" }}>{erLabelMadeDate}</div><div>폐기일자:</div><div style={{ paddingLeft: "2mm" }}>{item.discardDate || getErDiscardDate(new Date(), item.expiryMonths)}</div></div></div>)}
           </div>
         </div>)}
       </div>
