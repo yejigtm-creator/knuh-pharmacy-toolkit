@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { PDFDocument } from "pdf-lib";
+import DrugInfo from "@/components/DrugInfo";
 
-type TabKey = "split" | "syrup" | "label" | "education";
+type TabKey = "split" | "syrup" | "label" | "education" | "drugInfo";
 type EducationMode = "inhaler" | "warfarin" | "colonoscopy";
 type SplitMode = "mg" | "t";
 type LabelMode = "text" | "image" | "syrup" | "er";
@@ -201,7 +202,7 @@ const getSyrupExpiryDate = (baseDate = new Date()): string => {
   return yy + "-" + mm + "-" + dd;
 };
 
-const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 5 ? 2 : 3;
+const getSyrupColumnCount = (drugName: string): number => drugName.replaceAll(" ", "").length >= 6 ? 2 : 3;
 
 const formatErDate = (baseDate = new Date()): string => {
   const yyyy = String(baseDate.getFullYear());
@@ -1509,7 +1510,9 @@ export default function App() {
       <style>{`${HTML_LABEL_STYLE} html { overflow-y: scroll; scrollbar-gutter: stable; } button:not(:disabled), select, input[type="button"], input[type="submit"], input[type="reset"] { cursor: pointer; } button:disabled { cursor: not-allowed; }`}</style>
       <div className="mx-auto max-w-6xl space-y-8">
         <header className="space-y-3"><div className="text-xs tracking-[0.32em] text-[#8a8175]">KNUH PHARMACY TOOLKIT</div><div className="flex items-end gap-3"><h1 className="border-l-4 border-[#7A816C] pl-3 text-3xl font-bold text-[#302b26]">약제과 업무지원 도구</h1><span className="text-sm text-[#8a8175]"></span></div><div className="text-xs tracking-[0.18em] text-[#8a8175]">pharmacy utility series · YJ · v1.1</div></header>
-        <nav className="flex flex-wrap gap-4"><TabButton active={tab === "split"} label="분할조제 계산" onClick={() => setTab("split")} /><TabButton active={tab === "syrup"} label="건조시럽 조제" onClick={() => setTab("syrup")} /><TabButton active={tab === "label"} label="라벨 제작" onClick={() => setTab("label")} /><TabButton active={tab === "education"} label="복약안내문" onClick={() => setTab("education")} /></nav>
+        <nav className="flex flex-wrap gap-4"><TabButton active={tab === "split"} label="분할조제 계산" onClick={() => setTab("split")} /><TabButton active={tab === "syrup"} label="건조시럽 조제" onClick={() => setTab("syrup")} /><TabButton active={tab === "label"} label="라벨 제작" onClick={() => setTab("label")} /><TabButton active={tab === "education"} label="복약안내문" onClick={() => setTab("education")} /><TabButton active={tab === "drugInfo"} label="약품정보" onClick={() => setTab("drugInfo")} /></nav>
+
+        {tab === "drugInfo" && <DrugInfo />}
 
         {tab === "split" && <div className="space-y-6"><SectionCard title="분할조제 계산" description="mg 또는 T 단위 처방 기준으로 몇 정을 몇 포로 나눌지 계산"><div className="space-y-5"><div className="flex items-center justify-between gap-3">
   <div className="flex flex-wrap items-center gap-3">
