@@ -25,7 +25,6 @@ export default function InsulinInfo() {
       <Card className="min-w-0 rounded-3xl border border-[#e5dccf] bg-[#f8f4ed] shadow-[0_10px_30px_rgba(99,88,70,0.08)]">
         <CardHeader>
           <CardTitle className="text-2xl text-[#3e372f]">인슐린 종류별 분류 및 작용 특성</CardTitle>
-          <p className="text-sm text-[#8a8175]">{meta.asOf}</p>
         </CardHeader>
         <CardContent>
           <div className="max-w-full overflow-x-auto rounded-2xl border border-[#e5dccf]" role="region" aria-label="인슐린 종류별 분류 및 작용 특성" tabIndex={0}>
